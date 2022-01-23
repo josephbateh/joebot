@@ -22,7 +22,7 @@ namespace JoeBot.Helpers
     {
       var table = new ConsoleTable(Columns);
       foreach (var row in Rows)
-        // ReSharper disable once CoVariantArrayConversion
+      // ReSharper disable once CoVariantArrayConversion
       {
         table.AddRow(row);
       }
