@@ -3,8 +3,8 @@ using JoeBot.Commands.ProEnvironment;
 
 var root = new RootCommand
 {
-    Name = "joe",
-    Description = "Joe Bot"
+  Name = "joe",
+  Description = "Joe Bot"
 };
 
 root.AddCommand(BankingCommand.Get());

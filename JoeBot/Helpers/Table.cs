@@ -1,33 +1,30 @@
 using ConsoleTables;
 
-namespace JoeBot.Helpers
+namespace JoeBot.Helpers;
+
+public class Table
 {
-  public class Table
+  public Table(string[] columns)
   {
-    public Table(string[] columns)
-    {
-      Columns = columns;
-      Rows = Array.Empty<string[]>();
-    }
+    Columns = columns;
+    Rows = Array.Empty<string[]>();
+  }
 
-    private string[] Columns { get; }
-    private string[][] Rows { get; set; }
+  private string[] Columns { get; }
+  private string[][] Rows { get; set; }
 
-    public void AddRow(string[] row)
-    {
-      Rows = Rows.Append(row).ToArray();
-    }
+  public void AddRow(string[] row)
+  {
+    Rows = Rows.Append(row).ToArray();
+  }
 
-    public void Print()
-    {
-      var table = new ConsoleTable(Columns);
-      foreach (var row in Rows)
+  public void Print()
+  {
+    var table = new ConsoleTable(Columns);
+    foreach (var row in Rows)
       // ReSharper disable once CoVariantArrayConversion
-      {
-        table.AddRow(row);
-      }
+      table.AddRow(row);
 
-      table.Write(Format.Minimal);
-    }
+    table.Write(Format.Minimal);
   }
 }
