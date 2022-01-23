@@ -1,4 +1,5 @@
 using System.CommandLine;
+using JoeBot.Helpers;
 
 namespace JoeBot.Commands.ProEnvironment
 {
@@ -11,7 +12,23 @@ namespace JoeBot.Commands.ProEnvironment
       command.AddArgument(fileArgument);
       command.SetHandler((string file) =>
       {
-        Console.WriteLine($"Hello {file}!");
+        var table = new Table(new[]
+        {
+          "Name",
+          "Date",
+          "Value",
+          "File"
+        });
+        
+        table.AddRow(new []
+        {
+          "Publix",
+          "2022-01-23",
+          "$420.69",
+          file
+        });
+        
+        table.Print();
       }, fileArgument);
       return command;
     }
