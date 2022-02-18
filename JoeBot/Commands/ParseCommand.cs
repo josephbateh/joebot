@@ -4,7 +4,7 @@ using CsvHelper;
 using JoeBot.Helpers;
 using JoeBot.Models;
 
-namespace JoeBot.Commands.ProEnvironment;
+namespace JoeBot.Commands;
 
 public static class ParseCommand
 {
@@ -29,13 +29,16 @@ public static class ParseCommand
 
       foreach (var record in records)
       {
-        var value = record.Credit!.Equals("") ? record.Debit : record.Credit;
-        table.AddRow(new[]
+        if (record.Description.ToLower().Contains("publix"))
         {
-          record.Date,
-          record.Description,
-          value!.ToString(CultureInfo.InvariantCulture)
-        });
+          var value = record.Credit!.Equals("") ? record.Debit : record.Credit;
+          table.AddRow(new[]
+          {
+            record.Date,
+            "Publix",
+            value!.ToString(CultureInfo.InvariantCulture)
+          });
+        }
       }
 
       table.Print();

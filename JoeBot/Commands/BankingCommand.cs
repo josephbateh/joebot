@@ -1,6 +1,6 @@
 using System.CommandLine;
 
-namespace JoeBot.Commands.ProEnvironment;
+namespace JoeBot.Commands;
 
 public static class BankingCommand
 {

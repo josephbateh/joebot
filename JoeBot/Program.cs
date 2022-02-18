@@ -1,5 +1,5 @@
 ﻿using System.CommandLine;
-using JoeBot.Commands.ProEnvironment;
+using JoeBot.Commands;
 
 var root = new RootCommand
 {
@@ -8,5 +8,6 @@ var root = new RootCommand
 };
 
 root.AddCommand(BankingCommand.Get());
+root.AddCommand(GetCommand.Get());
 
 return root.InvokeAsync(args).Result;
