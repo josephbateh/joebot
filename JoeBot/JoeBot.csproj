@@ -11,13 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ConsoleTables" Version="2.4.2" />
-    <PackageReference Include="CsvHelper" Version="27.2.1" />
-    <PackageReference Include="System.CommandLine" Version="2.0.0-beta2.21617.1" />
+    <PackageReference Include="ConsoleTables" Version="2.4.2"/>
+    <PackageReference Include="CsvHelper" Version="27.2.1"/>
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta2.21617.1"/>
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Models\Rss" />
+    <Folder Include="Models\Rss"/>
   </ItemGroup>
 
 </Project>

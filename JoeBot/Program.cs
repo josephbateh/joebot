@@ -7,7 +7,7 @@ var root = new RootCommand
   Description = "Joe Bot"
 };
 
-root.AddCommand(BankingCommand.Get());
+root.AddCommand(ParseCommand.Get());
 root.AddCommand(GetCommand.Get());
 
 return root.InvokeAsync(args).Result;

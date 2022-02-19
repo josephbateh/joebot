@@ -20,4 +20,5 @@ joe get podcasts https://feed.uri.here /path/to/directory
 
 - If two episodes were released on the same day, only one will be downloaded.
 - If a file with the same name already exists, the download will be skipped.
+- If a request to download fails, it will not retry.
 - Each episode will be named based on the date it released.
