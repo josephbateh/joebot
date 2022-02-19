@@ -4,7 +4,24 @@ Code that automates tasks normally done by Joseph Bateh.
 
 ## Installation
 
-Coming soon.
+Requirements:
+- .NET 6 SDK
+
+### Linux
+
+```shell
+cd JoeBot
+./Scripts/build.sh
+./Scripts/local-install-linux-x64.sh
+```
+
+### MacOS
+
+```shell
+cd JoeBot
+./Scripts/build.sh
+./Scripts/local-install-osx-x64.sh
+```
 
 ## Podcast Downloads
 

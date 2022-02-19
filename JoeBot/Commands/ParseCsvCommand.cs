@@ -8,6 +8,7 @@ namespace JoeBot.Commands;
 
 public static class ParseCsvCommand
 {
+  // Command still work in progress
   public static Command Get()
   {
     var fileArgument = new Argument<string>("file", "File to be parsed.");
