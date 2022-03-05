@@ -1,4 +1,6 @@
 using System.CommandLine;
+using System.Security.Cryptography;
+using System.Text;
 using System.Xml.Serialization;
 using JoeBot.Models.Rss;
 
@@ -25,7 +27,9 @@ public static class PodcastCommand
       var items = deserialized.Channel.Item;
       foreach (var item in items)
       {
+        var hash = HashString(item.Description);
         var url = item.Enclosure.Url;
+
         Stream? data;
         try
         {
@@ -39,7 +43,7 @@ public static class PodcastCommand
 
         var date = DateTime.Parse(item.PubDate);
         var formDate = date.ToUniversalTime().ToString("yyyy-MM-dd");
-        var fullPath = $"{path}/{formDate}.mp3";
+        var fullPath = $"{path}/{formDate}-{hash}.mp3";
         try
         {
           await using Stream inStream = File.OpenRead(fullPath);
@@ -54,5 +58,15 @@ public static class PodcastCommand
       }
     }, rssFeedArg, filePathArg);
     return command;
+  }
+
+  private static string HashString(string message)
+  {
+    using var md5 = MD5.Create();
+    var input = Encoding.ASCII.GetBytes(message);
+    var hash = md5.ComputeHash(input);
+    var sb = new StringBuilder();
+    foreach (var val in hash) sb.Append(val.ToString("X2"));
+    return sb.ToString().ToUpper().Substring(0, 5);
   }
 }
