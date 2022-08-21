@@ -8,7 +8,8 @@ public static class GetCommand
   {
     var command = new Command("get", "Commands for getting things.");
     command.AddAlias("get");
-    command.AddCommand(PodcastCommand.Get());
+    command.AddCommand(GetPodcastCommand.Get());
+    command.AddCommand(GetInternetStatusCommand.Get());
     return command;
   }
 }

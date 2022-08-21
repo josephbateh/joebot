@@ -6,7 +6,7 @@ using JoeBot.Models.Rss;
 
 namespace JoeBot.Commands;
 
-public static class PodcastCommand
+public static class GetPodcastCommand
 {
   public static Command Get()
   {
