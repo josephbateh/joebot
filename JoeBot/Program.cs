@@ -8,5 +8,6 @@ var root = new RootCommand
 };
 
 root.AddCommand(GetCommand.Get());
+root.AddCommand(ExecuteCommand.Get());
 
 return root.InvokeAsync(args).Result;
