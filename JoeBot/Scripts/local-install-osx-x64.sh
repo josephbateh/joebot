@@ -7,26 +7,26 @@ binPath=/usr/local/bin/joe
 arch=$(uname -m)
 version=$(sw_vers -productVersion | sed "s:.[[:digit:]]*.$::g")
 
-if [ ${version} = 12 ]; then
+if [ "${version}" = 12 ]; then
   # Check if ARM
-  if [ ${arch} = 'arm64' ]; then
+  if [ "${arch}" = 'arm64' ]; then
     buildPath=out/osx.12-arm64
   fi
   
   # Check if X64
-  if [ ${arch} = 'arm64' ]; then
+  if [ "${arch}" = 'arm64' ]; then
     buildPath=out/osx.12-x64
   fi
 fi
 
-if [ ${version} = 11 ]; then
+if [ "${version}" = 11 ]; then
   # Check if ARM
-  if [ ${arch} = 'arm64' ]; then
+  if [ "${arch}" = 'arm64' ]; then
     buildPath=out/osx.11.0-arm64
   fi
   
   # Check if X64
-  if [ ${arch} = 'arm64' ]; then
+  if [ "${arch}" = 'arm64' ]; then
     buildPath=out/osx.11.0-x64
   fi
 fi

@@ -51,8 +51,7 @@ public static class GetInternetStatusCommand
       
       // If execution makes it here, you are connected to the internet.
       if (log) Console.WriteLine("Internet connected.");
-      var client = new Influx();
-      client.UploadMetricAsync("localhost", "internet", 8086, "status", 0, null);
+      // client.UploadMetricAsync("localhost", "internet", 8086, "status", 0, null);
     },
     influxOption,
     logOption);
