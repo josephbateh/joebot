@@ -14,29 +14,49 @@ public static class ExecuteScriptCommand
     command.AddArgument(filePathArg);
     command.SetHandler((string path) =>
     {
+      // Set up process
       var startTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
       var processStartInfo = new ProcessStartInfo {
         FileName = path,
         Arguments = "",
         RedirectStandardOutput = true,
-        RedirectStandardError = true
+        RedirectStandardError = true,
       };
       var process = new Process();
-      var standardOutput = new StringBuilder();
-      var standardError = new StringBuilder();;
+      var processOutput = new StringBuilder();
       process.StartInfo = processStartInfo;
       
-      // Start process and wait for completion
+      // Start process
       process.Start();
-      process.WaitForExit();
+      Console.WriteLine("Process started.");
 
+      // Create new combined stream
+      var combinedStream = new MemoryStream();
+      
+      // Wait for process to exit
+      Console.WriteLine("Waiting for process to exit...");
+      process.WaitForExit();
+      Console.WriteLine("Process has exited.");
+      
+      // Copy the StandardOutput stream to the combined stream
+      process.StandardOutput.BaseStream.CopyTo(combinedStream);
+      
+      // Copy the StandardError stream to the combined stream
+      process.StandardError.BaseStream.CopyTo(combinedStream);
+
+      // Get streamreader
+      var combinedStreamReader = new StreamReader(combinedStream);
+
+      processOutput.Append(combinedStreamReader.ReadToEnd());
       // Get output
-      standardOutput.Append(process.StandardOutput.ReadToEnd());
-      standardError.Append(process.StandardError.ReadToEnd());
+      // while (combinedStream.CanRead) {
+      //   // var line = combinedStreamReader.ReadLine();
+      //   // Console.WriteLine(line);
+      //   processOutput.Append(combinedStreamReader.ReadToEnd());
+      // }
       
       // Write output to files
-      File.WriteAllText($"standard-output-{startTime}.txt", standardOutput.ToString());
-      File.WriteAllText($"standard-error-{startTime}.txt", standardError.ToString());
+      File.WriteAllText($"output-{startTime}.txt", processOutput.ToString());
     }, filePathArg);
     return command;
   }
