@@ -5,6 +5,7 @@ Code that automates tasks normally done by Joseph Bateh.
 ## Installation
 
 Requirements:
+
 - .NET 6 SDK
 
 ### Linux
