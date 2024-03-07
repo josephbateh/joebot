@@ -55,6 +55,10 @@ public static class GetPodcastCommand
           await data.CopyToAsync(outStream);
           Console.WriteLine($"Downloaded: {fullPath}");
         }
+        catch (IOException) {
+          // This can happen when another process is using the file. Example: iCloud Drive syncing a file.
+          Console.WriteLine($"Skipping: {fullPath}");
+        }
       }
     }, rssFeedArg, filePathArg);
     return command;
