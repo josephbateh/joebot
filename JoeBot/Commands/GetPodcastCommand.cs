@@ -18,15 +18,25 @@ public static class GetPodcastCommand
     command.AddAlias("podcast");
     command.AddArgument(rssFeedArg);
     command.AddArgument(filePathArg);
-    command.SetHandler(async (string feed, string path) =>
+    var limitOption = new Option<int>(
+      name: "--limit",
+      description: "Limit the number of recent podcasts to download."
+    );
+    command.AddOption(limitOption);
+    command.SetHandler(async (string feed, string path, int limit) =>
     {
       var client = new HttpClient();
       var content = await client.GetStreamAsync(feed);
       var serializer = new XmlSerializer(typeof(RssFeed));
       var deserialized = (RssFeed) serializer.Deserialize(content)!;
       var items = deserialized.Channel.Item;
+      var counter = 0;
       foreach (var item in items)
       {
+        if (counter >= limit) {
+          break;
+        }
+        counter++;
         var hash = HashString(item.Description);
         var url = item.Enclosure.Url;
 
@@ -60,7 +70,7 @@ public static class GetPodcastCommand
           Console.WriteLine($"Skipping: {fullPath}");
         }
       }
-    }, rssFeedArg, filePathArg);
+    }, rssFeedArg, filePathArg, limitOption);
     return command;
   }
 

@@ -42,7 +42,3 @@ joe get podcasts https://feed.uri.here /path/to/directory
 - If a request to download fails, it will not retry.
 - Each episode will be named based on the date it released.
 - Each episode will receive a hash to handle days where multiple episodes were released.
-
-## Future Improvements
-
-- Add flag to stop trying after skipping downloads in the podcast command.
