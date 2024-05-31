@@ -22,9 +22,11 @@ public static class GetPodcastCommand
       name: "--limit",
       description: "Limit the number of recent podcasts to download."
     );
+    limitOption.SetDefaultValue(0);
     command.AddOption(limitOption);
     command.SetHandler(async (string feed, string path, int limit) =>
     {
+      var unlimitedDownloads = limit == 0;
       var client = new HttpClient();
       var content = await client.GetStreamAsync(feed);
       var serializer = new XmlSerializer(typeof(RssFeed));
@@ -33,7 +35,7 @@ public static class GetPodcastCommand
       var counter = 0;
       foreach (var item in items)
       {
-        if (counter >= limit) {
+        if (!unlimitedDownloads && counter >= limit) {
           break;
         }
         counter++;
