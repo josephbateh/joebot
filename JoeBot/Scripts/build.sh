@@ -34,20 +34,6 @@ dotnet publish -c Release -r ${runtime} --self-contained -o ${directory} -p:Publ
 mv ${directory}/JoeBot ${directory}/joe-${runtime}-"${version}"
 cp ${directory}/joe-${runtime}-"${version}" ${directory}/joe
 
-# Build for MacOS Big Sur x64
-runtime=osx.11.0-x64
-directory=out/${runtime}
-dotnet publish -c Release -r ${runtime} --self-contained -o ${directory} -p:PublishSingleFile=true
-mv ${directory}/JoeBot ${directory}/joe-${runtime}-"${version}"
-cp ${directory}/joe-${runtime}-"${version}" ${directory}/joe
-
-# Build for MacOS Big Sur ARM
-runtime=osx.11.0-arm64
-directory=out/${runtime}
-dotnet publish -c Release -r ${runtime} --self-contained -o ${directory} -p:PublishSingleFile=true
-mv ${directory}/JoeBot ${directory}/joe-${runtime}-"${version}"
-cp ${directory}/joe-${runtime}-"${version}" ${directory}/joe
-
 # Build for Linux x64
 runtime=linux-x64
 directory=out/${runtime}

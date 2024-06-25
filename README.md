@@ -18,10 +18,21 @@ cd JoeBot
 
 ### MacOS
 
+Install .NET 6: [link](https://dotnet.microsoft.com/en-us/download/dotnet/6.0).
+
+OR
+
+```shell
+brew install dotnet@6
+echo 'export PATH="/opt/homebrew/opt/dotnet@6/bin:$PATH"' >> ~/.zshrc
+```
+
+Build and install JoeBot:
+
 ```shell
 cd JoeBot
 ./Scripts/build.sh
-./Scripts/local-install-osx-x64.sh
+./Scripts/local-install-osx.sh
 ```
 
 ## Usage
