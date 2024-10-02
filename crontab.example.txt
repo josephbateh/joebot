@@ -1,0 +1,11 @@
+# Download The Daily at 3 AM daily.
+0 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.simplecast.com/54nAGcIl' '/home/joseph/Samba/Podcasts/The Daily' --limit 10
+
+# Download Techlinked at 3:15 AM daily.
+15 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/LMG6425578600' '/home/joseph/Samba/Podcasts/TechLinked' --limit 10
+
+# Download GameLinked at 3:30 AM daily.
+30 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/LMG1416424702' '/home/joseph/Samba/Podcasts/GameLinked' --limit 10
+
+# Download The Ezra Klein Show at 3:45 AM daily.
+45 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.simplecast.com/82FI35Px' '/home/joseph/Samba/Podcasts/The Ezra Klein Show' --limit 10
