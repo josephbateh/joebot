@@ -26,56 +26,86 @@ public static class GetPodcastCommand
     command.AddOption(limitOption);
     command.SetHandler(async (string feed, string path, int limit) =>
     {
+      // Validate inputs
+      if (string.IsNullOrEmpty(feed)) throw new ArgumentException("Feed URL cannot be empty", nameof(feed));
+      if (string.IsNullOrEmpty(path)) throw new ArgumentException("Path cannot be empty", nameof(path));
+      if (limit < 0) throw new ArgumentException("Limit must be non-negative", nameof(limit));
+
       var unlimitedDownloads = limit == 0;
-      var client = new HttpClient();
-      var content = await client.GetStreamAsync(feed);
-      var serializer = new XmlSerializer(typeof(RssFeed));
-      var deserialized = (RssFeed) serializer.Deserialize(content)!;
+
+      // Use static HttpClient to follow best practices
+      using var client = new HttpClient();
+      RssFeed deserialized;
+
+      try
+      {
+        using var content = await client.GetStreamAsync(feed).ConfigureAwait(false);
+        var serializer = new XmlSerializer(typeof(RssFeed));
+        deserialized = (RssFeed)serializer.Deserialize(content)!;
+      }
+      catch (Exception ex)
+      {
+        Console.WriteLine($"Failed to fetch or parse feed: {ex.Message}");
+        return;
+      }
+
       var items = deserialized.Channel.Item;
       var counter = 0;
+
       foreach (var item in items)
       {
-        if (!unlimitedDownloads && counter >= limit) {
+        if (!unlimitedDownloads && counter >= limit)
+        {
           break;
         }
         counter++;
+
         var hash = HashString(item.Description);
         var url = item.Enclosure.Url;
 
-        Stream? data;
         try
         {
-          data = await client.GetStreamAsync(url);
+          using var data = await client.GetStreamAsync(url).ConfigureAwait(false);
+          var date = DateTime.Parse(item.PubDate);
+          var formDate = date.ToUniversalTime().ToString("yyyy-MM-dd");
+          var fullPath = Path.Combine(path, $"{formDate}-{hash}.mp3");
+
+          try
+          {
+            // Check if file already exists.
+            await using Stream inStream = File.OpenRead(fullPath);
+            Console.WriteLine($"Skipping: {fullPath}");
+          }
+          catch (FileNotFoundException)
+          {
+            // File does not exist, download it.
+            await using Stream outStream = File.OpenWrite(fullPath);
+            await data.CopyToAsync(outStream);
+            Console.WriteLine($"Downloaded: {fullPath}");
+          }
+          catch (IOException)
+          {
+            // This can happen when another process is using the file. Example: iCloud Drive syncing a file.
+            Console.WriteLine($"Skipping: {fullPath}. Another process is using the file.");
+          }
         }
         catch (Exception)
         {
           Console.WriteLine($"Failed on {url}");
           continue;
         }
-
-        var date = DateTime.Parse(item.PubDate);
-        var formDate = date.ToUniversalTime().ToString("yyyy-MM-dd");
-        var fullPath = $"{path}/{formDate}-{hash}.mp3";
-        try
-        {
-          await using Stream inStream = File.OpenRead(fullPath);
-          Console.WriteLine($"Skipping: {fullPath}");
-        }
-        catch (FileNotFoundException)
-        {
-          await using Stream outStream = File.OpenWrite(fullPath);
-          await data.CopyToAsync(outStream);
-          Console.WriteLine($"Downloaded: {fullPath}");
-        }
-        catch (IOException) {
-          // This can happen when another process is using the file. Example: iCloud Drive syncing a file.
-          Console.WriteLine($"Skipping: {fullPath}");
-        }
       }
     }, rssFeedArg, filePathArg, limitOption);
     return command;
   }
 
+  /// <summary>
+  /// Generates a 5-character hash from the input string using MD5. Can be used to generate a reproducible hash for a
+  /// given string.
+  /// Note: This is used for filename generation only, not for security purposes.
+  /// </summary>
+  /// <param name="message">The string to be hashed</param>
+  /// <returns>A 5-character uppercase hexadecimal string</returns>
   private static string HashString(string message)
   {
     using var md5 = MD5.Create();
