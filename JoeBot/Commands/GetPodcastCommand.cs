@@ -31,6 +31,10 @@ public static class GetPodcastCommand
       if (string.IsNullOrEmpty(path)) throw new ArgumentException("Path cannot be empty", nameof(path));
       if (limit < 0) throw new ArgumentException("Limit must be non-negative", nameof(limit));
 
+      // Create directory if it doesn't exist
+      Directory.CreateDirectory(Path.GetDirectoryName(path)
+        ?? throw new ArgumentException("Invalid path", nameof(path)));
+
       var unlimitedDownloads = limit == 0;
 
       // Use static HttpClient to follow best practices
