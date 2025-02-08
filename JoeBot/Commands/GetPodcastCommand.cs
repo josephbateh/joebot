@@ -32,8 +32,7 @@ public static class GetPodcastCommand
       if (limit < 0) throw new ArgumentException("Limit must be non-negative", nameof(limit));
 
       // Create directory if it doesn't exist
-      Directory.CreateDirectory(Path.GetDirectoryName(path)
-        ?? throw new ArgumentException("Invalid path", nameof(path)));
+      Directory.CreateDirectory(path);
 
       var unlimitedDownloads = limit == 0;
 
