@@ -54,3 +54,7 @@ joe get podcasts https://feed.uri.here /path/to/directory
 - If the directory doesn't exist, it will fail.
 - Each episode will be named based on the date it released.
 - Each episode will receive a hash to handle days where multiple episodes were released.
+
+## Future Work
+
+- Create a command that analyzes an iCloud Photo library on MacOS and can delete files that match a criteria. For example, files that are video files and have a resolution lower than 1080p.
