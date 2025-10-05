@@ -25,6 +25,13 @@
    running under tests.
 3. The `FileSystemUtils` class should use `Files.FileSystems.InMemory` when running under tests.
 
+### Date and Time
+
+1. Date and time calls should go through a `DateTimeUtils` class that wraps any calls to get the current date and time.
+2. The `DateTimeUtils` class should use an adapter to directly pass through to normal date and time calls when not running
+   under tests.
+3. The `DateTimeUtils` class should use `TimeProvider` when running under tests.
+
 ## Rules
 
 1. Do not use `rm` for `bin` or `obj` files when building. Instead, use `dotnet clean` to remove these files.
