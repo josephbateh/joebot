@@ -28,10 +28,13 @@
 ### Date and Time
 
 1. Date and time calls should go through a `DateTimeUtils` class that wraps any calls to get the current date and time.
-2. The `DateTimeUtils` class should use an adapter to directly pass through to normal date and time calls when not running
-   under tests.
+2. The `DateTimeUtils` class should use an adapter to directly pass through to normal date and time calls when not
+   running under tests.
 3. The `DateTimeUtils` class should use `TimeProvider` when running under tests.
 
 ## Rules
 
-1. Do not use `rm` for `bin` or `obj` files when building. Instead, use `dotnet clean` to remove these files.
+1. Do not use `rm` for `bin` or `obj` directories. Instead, use `dotnet clean` to remove these files.
+2. Do not use `rm -rf` for `bin` and `obj` directories. Instead, use `dotnet clean` to remove these files.
+3. If I ask you to complete a task, don't stop and ask permission to proceed, just do it. If the task is unclear, ask
+   for clarification.
