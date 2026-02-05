@@ -1,11 +1,17 @@
 # Download The Daily at 3 AM daily.
-0 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.simplecast.com/54nAGcIl' '/home/joseph/Samba/Podcasts/The Daily' --limit 10
+0 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.simplecast.com/54nAGcIl' '/home/joseph/Shares/Home/Podcasts/The Daily' --limit 10
 
 # Download Techlinked at 3:15 AM daily.
-15 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/LMG6425578600' '/home/joseph/Samba/Podcasts/TechLinked' --limit 10
+15 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/LMG6425578600' '/home/joseph/Shares/Home/Podcasts/TechLinked' --limit 10
 
-# Download GameLinked at 3:30 AM daily.
-30 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/LMG1416424702' '/home/joseph/Samba/Podcasts/GameLinked' --limit 10
+# Download The Ezra Klein Show at 3:30 AM daily
+30 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.simplecast.com/82FI35Px' '/home/joseph/Shares/Home/Podcasts/The Ezra Klein Show' --limit 10
 
-# Download The Ezra Klein Show at 3:45 AM daily.
-45 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.simplecast.com/82FI35Px' '/home/joseph/Samba/Podcasts/The Ezra Klein Show' --limit 10
+# Download The Clark Howard Show at 3:45 AM daily
+45 3 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/LMG6425578600' '/home/joseph/Shares/Home/Podcasts/The Clark Howard Show' --limit 10
+
+# Download The Waveform Podcast at 4:00 AM daily
+0 4 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/STU4418364045' '/home/joseph/Shares/Home/Podcasts/Waveform' --limit 10
+
+# Download The Vergecast at 4:15 AM daily
+15 4 * * * /usr/local/bin/joe get podcasts 'https://feeds.megaphone.fm/vergecast' '/home/joseph/Shares/Home/Podcasts/The Vergecast' --limit 10
