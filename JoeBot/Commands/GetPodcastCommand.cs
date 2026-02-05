@@ -10,22 +10,32 @@ public static class GetPodcastCommand
 {
   public static Command Get()
   {
-    var rssFeedArg = new Argument<string>("feed", "RSS feed.");
-    var filePathArg = new Argument<string>("path", "Path to save file.");
-    var command = new Command("podcasts", "Download podcast episodes from RSS feed.");
-    command.AddAlias("pod");
-    command.AddAlias("pods");
-    command.AddAlias("podcast");
-    command.AddArgument(rssFeedArg);
-    command.AddArgument(filePathArg);
-    var limitOption = new Option<int>(
-      name: "--limit",
-      description: "Limit the number of recent podcasts to download."
-    );
-    limitOption.SetDefaultValue(0);
-    command.AddOption(limitOption);
-    command.SetHandler(async (string feed, string path, int limit) =>
+    var rssFeedArg = new Argument<string>("feed")
     {
+      Description = "RSS feed."
+    };
+    var filePathArg = new Argument<string>("path")
+    {
+      Description = "Path to save file."
+    };
+    var command = new Command("podcasts", "Download podcast episodes from RSS feed.");
+    command.Aliases.Add("pod");
+    command.Aliases.Add("pods");
+    command.Aliases.Add("podcast");
+    command.Arguments.Add(rssFeedArg);
+    command.Arguments.Add(filePathArg);
+    var limitOption = new Option<int>("--limit")
+    {
+      Description = "Limit the number of recent podcasts to download.",
+      DefaultValueFactory = _ => 0
+    };
+    command.Options.Add(limitOption);
+    command.SetAction(async (parseResult, cancellationToken) =>
+    {
+      var feed = parseResult.GetValue<string>("feed")!;
+      var path = parseResult.GetValue<string>("path")!;
+      var limit = parseResult.GetValue<int>("--limit");
+      
       // Validate inputs
       if (string.IsNullOrEmpty(feed)) throw new ArgumentException("Feed URL cannot be empty", nameof(feed));
       if (string.IsNullOrEmpty(path)) throw new ArgumentException("Path cannot be empty", nameof(path));
@@ -42,7 +52,7 @@ public static class GetPodcastCommand
 
       try
       {
-        using var content = await client.GetStreamAsync(feed).ConfigureAwait(false);
+        using var content = await client.GetStreamAsync(feed, cancellationToken).ConfigureAwait(false);
         var serializer = new XmlSerializer(typeof(RssFeed));
         deserialized = (RssFeed)serializer.Deserialize(content)!;
       }
@@ -68,7 +78,7 @@ public static class GetPodcastCommand
 
         try
         {
-          using var data = await client.GetStreamAsync(url).ConfigureAwait(false);
+          using var data = await client.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
           var date = DateTime.Parse(item.PubDate);
           var formDate = date.ToUniversalTime().ToString("yyyy-MM-dd");
           var fullPath = Path.Combine(path, $"{formDate}-{hash}.mp3");
@@ -83,7 +93,7 @@ public static class GetPodcastCommand
           {
             // File does not exist, download it.
             await using Stream outStream = File.OpenWrite(fullPath);
-            await data.CopyToAsync(outStream);
+            await data.CopyToAsync(outStream, cancellationToken);
             Console.WriteLine($"Downloaded: {fullPath}");
           }
           catch (IOException)
@@ -98,7 +108,7 @@ public static class GetPodcastCommand
           continue;
         }
       }
-    }, rssFeedArg, filePathArg, limitOption);
+    });
     return command;
   }
 

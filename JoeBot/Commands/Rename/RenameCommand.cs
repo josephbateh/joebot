@@ -8,16 +8,18 @@ public class RenameCommand
 {
     public static Command Get()
     {
-        var directoryArg = new Argument<string>(
-            name: "directory",
-            description: "The directory containing files to rename"
-        );
+        var directoryArg = new Argument<string>("directory")
+        {
+            Description = "The directory containing files to rename"
+        };
 
         var command = new Command("rename", "Rename files in a directory based on their creation date");
-        command.AddArgument(directoryArg);
+        command.Arguments.Add(directoryArg);
             
-        command.SetHandler((string directory) =>
+        command.SetAction(parseResult =>
         {
+            var directory = parseResult.GetValue<string>("directory")!;
+            
             try
             {
                 var resolvedPath = ResolvePath(directory);
@@ -57,7 +59,7 @@ public class RenameCommand
             {
                 Console.WriteLine($"Error: {ex.Message}");
             }
-        }, directoryArg);
+        });
 
         return command;
     }

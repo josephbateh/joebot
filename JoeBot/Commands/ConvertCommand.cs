@@ -8,7 +8,7 @@ public static class ConvertCommand
     public static Command Get()
     {
         var command = new Command("convert", "Commands for converting files.");
-        command.AddCommand(ConvertVideoCommand.Get());
+        command.Subcommands.Add(ConvertVideoCommand.Get());
         return command;
     }
 }

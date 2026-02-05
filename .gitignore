@@ -1,5 +1,6 @@
-# Prompt File
+# AI Stuff
 prompts/
+.cursor/
 
 # Project Artifacts
 .idea

@@ -7,8 +7,7 @@ public static class ExecuteCommand
   public static Command Get()
   {
     var command = new Command("execute", "Commands for executing things.");
-    command.AddAlias("execute");
-    command.AddCommand(ExecuteScriptCommand.Get());
+    command.Subcommands.Add(ExecuteScriptCommand.Get());
     return command;
   }
 }

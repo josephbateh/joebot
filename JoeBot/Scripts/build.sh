@@ -20,15 +20,8 @@ dotnet publish -c Release -r ${runtime} --self-contained -o ${directory} -p:Publ
 mv ${directory}/JoeBot ${directory}/joe-${runtime}-"${version}"
 cp ${directory}/joe-${runtime}-"${version}" ${directory}/joe
 
-# Build for MacOS Monterrey x64
-runtime=osx.12-x64
-directory=out/${runtime}
-dotnet publish -c Release -r ${runtime} --self-contained -o ${directory} -p:PublishSingleFile=true
-mv ${directory}/JoeBot ${directory}/joe-${runtime}-"${version}"
-cp ${directory}/joe-${runtime}-"${version}" ${directory}/joe
-
-# Build for MacOS Monterrey ARM
-runtime=osx.12-arm64
+# Build for Generic MacOS ARM64
+runtime=osx-arm64
 directory=out/${runtime}
 dotnet publish -c Release -r ${runtime} --self-contained -o ${directory} -p:PublishSingleFile=true
 mv ${directory}/JoeBot ${directory}/joe-${runtime}-"${version}"

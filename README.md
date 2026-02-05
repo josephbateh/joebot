@@ -6,7 +6,7 @@ Code that automates tasks normally done by Joseph Bateh.
 
 Requirements:
 
-- .NET 6 SDK
+- .NET 10 SDK
 
 ### Linux
 
@@ -18,13 +18,13 @@ cd JoeBot
 
 ### MacOS
 
-Install .NET 6: [download](https://dotnet.microsoft.com/en-us/download/dotnet/6.0).
+Install .NET 10: [download](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
 
 OR
 
 ```shell
-brew install dotnet@6
-echo 'export PATH="/opt/homebrew/opt/dotnet@6/bin:$PATH"' >> ~/.zshrc
+brew install dotnet@10
+echo 'export PATH="/opt/homebrew/opt/dotnet@10/bin:$PATH"' >> ~/.zshrc
 ```
 
 Build and install JoeBot:

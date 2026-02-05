@@ -1,8 +1,15 @@
-# See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/dotnet/.devcontainer/base.Dockerfile
+# See here for image contents: https://github.com/devcontainers/images/tree/main/src/dotnet
 
-# [Choice] .NET version: 6.0, 3.1, 6.0-bullseye, 3.1-bullseye, 6.0-focal, 3.1-focal
-ARG VARIANT="6.0-bullseye-slim"
-FROM mcr.microsoft.com/vscode/devcontainers/dotnet:${VARIANT}
+# Using .NET 9.0 devcontainer as base, then installing .NET 10 SDK
+# (No official devcontainer image for .NET 10 yet)
+ARG VARIANT="9.0-bookworm"
+FROM mcr.microsoft.com/devcontainers/dotnet:${VARIANT}
+
+# Install .NET 10 SDK
+RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
+    && chmod +x dotnet-install.sh \
+    && ./dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet \
+    && rm dotnet-install.sh
 
 # [Choice] Node.js version: none, lts/*, 18, 16, 14
 ARG NODE_VERSION="none"

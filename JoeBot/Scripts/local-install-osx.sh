@@ -9,12 +9,7 @@ version=$(sw_vers -productVersion | sed "s:.[[:digit:]]*.$::g")
 
 # Check if ARM
 if [ "${arch}" = 'arm64' ]; then
-  buildPath=out/osx.12-arm64
-fi
-
-# Check if X64
-if [ "${arch}" = 'x64' ]; then
-  buildPath=out/osx.12-x64
+  buildPath=out/osx-arm64
 fi
 
 chmod +x ${buildPath}/joe

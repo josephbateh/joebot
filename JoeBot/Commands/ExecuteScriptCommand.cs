@@ -8,12 +8,17 @@ public static class ExecuteScriptCommand
 {
   public static Command Get()
   {
-    var filePathArg = new Argument<string>("path", "Path to script.");
-    var command = new Command("script", "Execute script(s) in parallel. Output the results to separate files.");
-    command.AddAlias("scripts");
-    command.AddArgument(filePathArg);
-    command.SetHandler((string path) =>
+    var filePathArg = new Argument<string>("path")
     {
+      Description = "Path to script."
+    };
+    var command = new Command("script", "Execute script(s) in parallel. Output the results to separate files.");
+    command.Aliases.Add("scripts");
+    command.Arguments.Add(filePathArg);
+    command.SetAction(parseResult =>
+    {
+      var path = parseResult.GetValue<string>("path")!;
+      
       // Set up process
       var startTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
       var processStartInfo = new ProcessStartInfo {
@@ -57,7 +62,7 @@ public static class ExecuteScriptCommand
       
       // Write output to files
       File.WriteAllText($"output-{startTime}.txt", processOutput.ToString());
-    }, filePathArg);
+    });
     return command;
   }
 }

@@ -23,54 +23,57 @@ public static class ConvertVideoCommand
 
     public static Command Get()
     {
-        var inputArg = new Argument<string>(
-            name: "input",
-            description: "Path to the input video file"
-        );
+        var inputArg = new Argument<string>("input")
+        {
+            Description = "Path to the input video file"
+        };
 
-        var outputArg = new Argument<string>(
-            name: "output",
-            description: "Path to the output video file"
-        );
+        var outputArg = new Argument<string>("output")
+        {
+            Description = "Path to the output video file"
+        };
 
-        var presetOption = new Option<string>(
-            name: "--preset",
-            description: "Video quality preset (480p, 720p, 1080p, 4K)",
-            getDefaultValue: () => "1080p"
-        );
-        presetOption.AddAlias("-p");
+        var presetOption = new Option<string>("--preset", "-p")
+        {
+            Description = "Video quality preset (480p, 720p, 1080p, 4K)",
+            DefaultValueFactory = _ => "1080p"
+        };
 
-        var formatOption = new Option<string>(
-            name: "--format",
-            description: "Container format (mkv, mp4)",
-            getDefaultValue: () => "mp4"
-        );
-        formatOption.AddAlias("-f");
+        var formatOption = new Option<string>("--format", "-f")
+        {
+            Description = "Container format (mkv, mp4)",
+            DefaultValueFactory = _ => "mp4"
+        };
 
-        var codecOption = new Option<string>(
-            name: "--codec",
-            description: "Video codec (h264, hevc)",
-            getDefaultValue: () => "h264"
-        );
-        codecOption.AddAlias("-c");
+        var codecOption = new Option<string>("--codec", "-c")
+        {
+            Description = "Video codec (h264, hevc)",
+            DefaultValueFactory = _ => "h264"
+        };
 
-        var threadsOption = new Option<int>(
-            name: "--threads",
-            description: "Number of threads to use for encoding (default: number of processors)",
-            getDefaultValue: () => Environment.ProcessorCount
-        );
-        threadsOption.AddAlias("-t");
+        var threadsOption = new Option<int>("--threads", "-t")
+        {
+            Description = "Number of threads to use for encoding (default: number of processors)",
+            DefaultValueFactory = _ => Environment.ProcessorCount
+        };
 
         var command = new Command("video", "Convert a video file using ffmpeg");
-        command.AddArgument(inputArg);
-        command.AddArgument(outputArg);
-        command.AddOption(presetOption);
-        command.AddOption(formatOption);
-        command.AddOption(codecOption);
-        command.AddOption(threadsOption);
+        command.Arguments.Add(inputArg);
+        command.Arguments.Add(outputArg);
+        command.Options.Add(presetOption);
+        command.Options.Add(formatOption);
+        command.Options.Add(codecOption);
+        command.Options.Add(threadsOption);
 
-        command.SetHandler((string input, string output, string preset, string format, string codec, int threads) =>
+        command.SetAction(parseResult =>
         {
+            var input = parseResult.GetValue<string>("input")!;
+            var output = parseResult.GetValue<string>("output")!;
+            var preset = parseResult.GetValue<string>("--preset")!;
+            var format = parseResult.GetValue<string>("--format")!;
+            var codec = parseResult.GetValue<string>("--codec")!;
+            var threads = parseResult.GetValue<int>("--threads");
+
             try
             {
                 var resolvedInput = ResolvePath(input);
@@ -124,7 +127,7 @@ public static class ConvertVideoCommand
             {
                 Console.WriteLine($"Error: {ex.Message}");
             }
-        }, inputArg, outputArg, presetOption, formatOption, codecOption, threadsOption);
+        });
 
         return command;
     }
@@ -136,8 +139,9 @@ public static class ConvertVideoCommand
         // With scaling for non-1080p presets: -vf scale=-2:{height}
         
         var scaleFilter = settings.Height == 1080 ? "" : $"-vf scale=-2:{settings.Height} ";
+        var subtitleCodec = format.ToLower() == "mkv" ? "srt" : "mov_text";
         
-        var arguments = $"-i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
+        var arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}-c:a aac -b:a {settings.AudioBitrate} -c:s {subtitleCodec} \"{output}\"";
 
         var processStartInfo = new ProcessStartInfo
         {
