@@ -3,8 +3,7 @@ using System.Xml.Serialization;
 namespace JoeBot.Models.Rss;
 
 [XmlRoot(ElementName = "item")]
-public class Item
-{
+public class Item {
   [XmlElement(ElementName = "title")]
   public List<string> Title { get; set; } = null!;
 

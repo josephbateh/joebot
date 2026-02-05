@@ -6,16 +6,12 @@ using JoeBot.Models.Rss;
 
 namespace JoeBot.Commands;
 
-public static class GetPodcastCommand
-{
-  public static Command Get()
-  {
-    var rssFeedArg = new Argument<string>("feed")
-    {
+public static class GetPodcastCommand {
+  public static Command Get() {
+    var rssFeedArg = new Argument<string>("feed") {
       Description = "RSS feed."
     };
-    var filePathArg = new Argument<string>("path")
-    {
+    var filePathArg = new Argument<string>("path") {
       Description = "Path to save file."
     };
     var command = new Command("podcasts", "Download podcast episodes from RSS feed.");
@@ -24,18 +20,16 @@ public static class GetPodcastCommand
     command.Aliases.Add("podcast");
     command.Arguments.Add(rssFeedArg);
     command.Arguments.Add(filePathArg);
-    var limitOption = new Option<int>("--limit")
-    {
+    var limitOption = new Option<int>("--limit") {
       Description = "Limit the number of recent podcasts to download.",
       DefaultValueFactory = _ => 0
     };
     command.Options.Add(limitOption);
-    command.SetAction(async (parseResult, cancellationToken) =>
-    {
+    command.SetAction(async (parseResult, cancellationToken) => {
       var feed = parseResult.GetValue<string>("feed")!;
       var path = parseResult.GetValue<string>("path")!;
       var limit = parseResult.GetValue<int>("--limit");
-      
+
       // Validate inputs
       if (string.IsNullOrEmpty(feed)) throw new ArgumentException("Feed URL cannot be empty", nameof(feed));
       if (string.IsNullOrEmpty(path)) throw new ArgumentException("Path cannot be empty", nameof(path));
@@ -50,14 +44,12 @@ public static class GetPodcastCommand
       using var client = new HttpClient();
       RssFeed deserialized;
 
-      try
-      {
+      try {
         using var content = await client.GetStreamAsync(feed, cancellationToken).ConfigureAwait(false);
         var serializer = new XmlSerializer(typeof(RssFeed));
         deserialized = (RssFeed)serializer.Deserialize(content)!;
       }
-      catch (Exception ex)
-      {
+      catch (Exception ex) {
         Console.WriteLine($"Failed to fetch or parse feed: {ex.Message}");
         return;
       }
@@ -65,10 +57,8 @@ public static class GetPodcastCommand
       var items = deserialized.Channel.Item;
       var counter = 0;
 
-      foreach (var item in items)
-      {
-        if (!unlimitedDownloads && counter >= limit)
-        {
+      foreach (var item in items) {
+        if (!unlimitedDownloads && counter >= limit) {
           break;
         }
         counter++;
@@ -76,34 +66,29 @@ public static class GetPodcastCommand
         var hash = HashString(item.Description);
         var url = item.Enclosure.Url;
 
-        try
-        {
+        try {
           using var data = await client.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
           var date = DateTime.Parse(item.PubDate);
           var formDate = date.ToUniversalTime().ToString("yyyy-MM-dd");
           var fullPath = Path.Combine(path, $"{formDate}-{hash}.mp3");
 
-          try
-          {
+          try {
             // Check if file already exists.
             await using Stream inStream = File.OpenRead(fullPath);
             Console.WriteLine($"Skipping: {fullPath}");
           }
-          catch (FileNotFoundException)
-          {
+          catch (FileNotFoundException) {
             // File does not exist, download it.
             await using Stream outStream = File.OpenWrite(fullPath);
             await data.CopyToAsync(outStream, cancellationToken);
             Console.WriteLine($"Downloaded: {fullPath}");
           }
-          catch (IOException)
-          {
+          catch (IOException) {
             // This can happen when another process is using the file. Example: iCloud Drive syncing a file.
             Console.WriteLine($"Skipping: {fullPath}. Another process is using the file.");
           }
         }
-        catch (Exception)
-        {
+        catch (Exception) {
           Console.WriteLine($"Failed on {url}");
           continue;
         }
@@ -119,8 +104,7 @@ public static class GetPodcastCommand
   /// </summary>
   /// <param name="message">The string to be hashed</param>
   /// <returns>A 5-character uppercase hexadecimal string</returns>
-  private static string HashString(string message)
-  {
+  private static string HashString(string message) {
     using var md5 = MD5.Create();
     var input = Encoding.ASCII.GetBytes(message);
     var hash = md5.ComputeHash(input);

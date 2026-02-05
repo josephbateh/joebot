@@ -3,8 +3,7 @@ using System.Xml.Serialization;
 namespace JoeBot.Models.Rss;
 
 [XmlRoot(ElementName = "channel")]
-public class RssChannel
-{
+public class RssChannel {
   [XmlElement(ElementName = "generator")]
   public string Generator { get; set; } = null!;
 

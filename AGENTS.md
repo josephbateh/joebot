@@ -6,11 +6,12 @@
 2. Decide what changes need to be made to accomplish your task.
 3. Make changes to the code.
 4. Build the code with `dotnet build`.
-5. Run the code with `dotnet run`.
-6. If the code works as expected, proceed to the next step. If not, go back to step 1.
-7. Write tests that verify the functionality of the code.
-8. Run tests using `dotnet test`.
-9. If tests fail, go back to step 1.
+5. Format the code with `dotnet format`.
+6. Run the code with `dotnet run`.
+7. If the code works as expected, proceed to the next step. If not, go back to step 1.
+8. Write tests that verify the functionality of the code.
+9. Run tests using `dotnet test`.
+10. If tests fail, go back to step 1.
 
 ## Testing Direction
 

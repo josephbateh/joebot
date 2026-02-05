@@ -3,8 +3,7 @@ using System.Xml.Serialization;
 namespace JoeBot.Models.Rss;
 
 [XmlRoot(ElementName = "enclosure")]
-public class Enclosure
-{
+public class Enclosure {
   [XmlAttribute(AttributeName = "length")]
   public int Length { get; set; }
 
