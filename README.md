@@ -52,7 +52,8 @@ dotnet run -- convert video -h             # Show convert video help
 
 Download podcast episodes from an RSS feed.
 
-To find the URI of a podcast feed, use [Podcast Addict](https://podcastaddict.com/) or [GetRSSFeed](https://getrssfeed.com/).
+To find the URI of a podcast feed, use [Podcast Addict](https://podcastaddict.com/) or
+[GetRSSFeed](https://getrssfeed.com/).
 
 ```shell
 joe get podcasts <feed-uri> <directory>
@@ -124,7 +125,8 @@ dotnet run -- execute script ./my-script.sh
 
 ### File Rename
 
-Rename files in a directory based on their creation date. Files are renamed to the format `YYYY-MM-DD-{hash}.{extension}` where the hash is generated from the original filename.
+Rename files in a directory based on their creation date. Files are renamed to the format
+`YYYY-MM-DD-{hash}.{extension}` where the hash is generated from the original filename.
 
 ```shell
 joe rename <directory>
@@ -176,4 +178,5 @@ dotnet run -- convert video input.mp4 output.mkv -f mkv -c hevc -p 1080p
 
 ## Future Work
 
-- Create a command that analyzes an iCloud Photo library on MacOS and can delete files that match a criteria. For example, files that are video files and have a resolution lower than 1080p.
+- Create a command that analyzes an iCloud Photo library on MacOS and can delete files that match a criteria. For
+  example, files that are video files and have a resolution lower than 1080p.

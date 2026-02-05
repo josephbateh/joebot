@@ -7,11 +7,12 @@
 3. Make changes to the code.
 4. Build the code with `dotnet build`.
 5. Format the code with `dotnet format`.
-6. Run the code with `dotnet run`.
-7. If the code works as expected, proceed to the next step. If not, go back to step 1.
-8. Write tests that verify the functionality of the code.
-9. Run tests using `dotnet test`.
-10. If tests fail, go back to step 1.
+6. Format Markdown files with `prettier --write "**/*.md"`.
+7. Run the code with `dotnet run`.
+8. If the code works as expected, proceed to the next step. If not, go back to step 1.
+9. Write tests that verify the functionality of the code.
+10. Run tests using `dotnet test`.
+11. If tests fail, go back to step 1.
 
 ## Testing Direction
 
