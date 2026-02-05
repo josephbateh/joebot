@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Net.NetworkInformation;
 
 namespace JoeBot.Commands;
 
@@ -23,34 +22,37 @@ public static class GetInternetStatusCommand {
       var influxHostname = parseResult.GetValue<string>("--influx-host");
       var log = parseResult.GetValue<bool>("--log");
 
+
       try {
         // Ping both Google and Wikipedia in case one is down.
-        var ping = new Ping();
         var primaryHost = "google.com";
         var secondaryHost = "wikipedia.org";
-        var buffer = new byte[32];
         var timeout = 1000;
-        PingOptions pingOptions = new PingOptions();
-        var primaryReply = ping.Send(primaryHost, timeout, buffer, pingOptions);
-        var secondaryReply = ping.Send(secondaryHost, timeout, buffer, pingOptions);
-        var primaryStatus = primaryReply.Status == IPStatus.Success;
-        var secondaryStatus = secondaryReply.Status == IPStatus.Success;
+
+        var primaryStatus = Services.NetworkPing.CanReach(primaryHost, timeout);
+        var secondaryStatus = Services.NetworkPing.CanReach(secondaryHost, timeout);
 
         if (!primaryStatus && !secondaryStatus) {
-          if (log) Console.WriteLine("Internet connection failure.");
+          if (log) Services.Console.WriteLine("Internet connection failure.");
           // Both pings failed.
-          Environment.Exit(1);
+          Services.Environment.Exit(1);
+          return;
+        }
+
+        if (primaryStatus && secondaryStatus) {
+          if (log) Services.Console.WriteLine("Internet connected.");
+        }
+        else {
+          // One of the hosts is reachable but not both
+          var reachableHost = primaryStatus ? primaryHost : secondaryHost;
+          if (log) Services.Console.WriteLine($"Partial connectivity. Only {reachableHost} is reachable.");
         }
       }
       catch (Exception) {
         // Something weird happened.
-        if (log) Console.WriteLine("Unknown failure.");
-        Environment.Exit(2);
+        if (log) Services.Console.WriteLine("Unknown failure.");
+        Services.Environment.Exit(2);
       }
-
-      // If execution makes it here, you are connected to the internet.
-      if (log) Console.WriteLine("Internet connected.");
-      // client.UploadMetricAsync("localhost", "internet", 8086, "status", 0, null);
     });
     return command;
   }

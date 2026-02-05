@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Diagnostics;
 using System.Text;
 
 namespace JoeBot.Commands;
@@ -15,49 +14,27 @@ public static class ExecuteScriptCommand {
     command.SetAction(parseResult => {
       var path = parseResult.GetValue<string>("path")!;
 
-      // Set up process
-      var startTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-      var processStartInfo = new ProcessStartInfo {
-        FileName = path,
-        Arguments = "",
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-      };
-      var process = new Process();
+      // Get start time for output filename
+      var startTime = Services.Time.GetUtcNow().ToUnixTimeMilliseconds();
+
+      Services.Console.WriteLine("Process started.");
+
+      // Run the script using process runner
+      var result = Services.ProcessRunner.Run(path, "");
+
+      Services.Console.WriteLine("Waiting for process to exit...");
+      Services.Console.WriteLine("Process has exited.");
+
+      // Combine stdout and stderr
       var processOutput = new StringBuilder();
-      process.StartInfo = processStartInfo;
+      processOutput.Append(result.StandardOutput);
+      processOutput.Append(result.StandardError);
 
-      // Start process
-      process.Start();
-      Console.WriteLine("Process started.");
+      // Write output to file
+      var outputFileName = $"output-{startTime}.txt";
+      Services.FileSystem.File.WriteAllText(outputFileName, processOutput.ToString());
 
-      // Create new combined stream
-      var combinedStream = new MemoryStream();
-
-      // Wait for process to exit
-      Console.WriteLine("Waiting for process to exit...");
-      process.WaitForExit();
-      Console.WriteLine("Process has exited.");
-
-      // Copy the StandardOutput stream to the combined stream
-      process.StandardOutput.BaseStream.CopyTo(combinedStream);
-
-      // Copy the StandardError stream to the combined stream
-      process.StandardError.BaseStream.CopyTo(combinedStream);
-
-      // Get streamreader
-      var combinedStreamReader = new StreamReader(combinedStream);
-
-      processOutput.Append(combinedStreamReader.ReadToEnd());
-      // Get output
-      // while (combinedStream.CanRead) {
-      //   // var line = combinedStreamReader.ReadLine();
-      //   // Console.WriteLine(line);
-      //   processOutput.Append(combinedStreamReader.ReadToEnd());
-      // }
-
-      // Write output to files
-      File.WriteAllText($"output-{startTime}.txt", processOutput.ToString());
+      Services.Console.WriteLine($"Output written to: {outputFileName}");
     });
     return command;
   }

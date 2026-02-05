@@ -1,5 +1,5 @@
 using System.CommandLine;
-using System.Diagnostics;
+using JoeBot.Abstractions;
 
 namespace JoeBot.Commands.Convert;
 
@@ -44,7 +44,7 @@ public static class ConvertVideoCommand {
 
     var threadsOption = new Option<int>("--threads", "-t") {
       Description = "Number of threads to use for encoding (default: number of processors)",
-      DefaultValueFactory = _ => Environment.ProcessorCount
+      DefaultValueFactory = _ => Services.Environment.ProcessorCount
     };
 
     var command = new Command("video", "Convert a video file using ffmpeg");
@@ -67,46 +67,46 @@ public static class ConvertVideoCommand {
         var resolvedInput = ResolvePath(input);
         var resolvedOutput = ResolvePath(output);
 
-        if (!File.Exists(resolvedInput)) {
-          Console.WriteLine($"Error: Input file '{input}' does not exist.");
+        if (!Services.FileSystem.File.Exists(resolvedInput)) {
+          Services.Console.WriteLine($"Error: Input file '{input}' does not exist.");
           return;
         }
 
         if (!Presets.TryGetValue(preset, out var presetSettings)) {
-          Console.WriteLine($"Error: Invalid preset '{preset}'. Valid presets are: {string.Join(", ", Presets.Keys)}");
+          Services.Console.WriteLine($"Error: Invalid preset '{preset}'. Valid presets are: {string.Join(", ", Presets.Keys)}");
           return;
         }
 
         if (!ValidFormats.Contains(format.ToLower())) {
-          Console.WriteLine($"Error: Invalid format '{format}'. Valid formats are: {string.Join(", ", ValidFormats)}");
+          Services.Console.WriteLine($"Error: Invalid format '{format}'. Valid formats are: {string.Join(", ", ValidFormats)}");
           return;
         }
 
         if (!Codecs.TryGetValue(codec.ToLower(), out var codecLib)) {
-          Console.WriteLine($"Error: Invalid codec '{codec}'. Valid codecs are: {string.Join(", ", Codecs.Keys)}");
+          Services.Console.WriteLine($"Error: Invalid codec '{codec}'. Valid codecs are: {string.Join(", ", Codecs.Keys)}");
           return;
         }
 
-        Console.WriteLine($"Converting video...");
-        Console.WriteLine($"  Input:  {resolvedInput}");
-        Console.WriteLine($"  Output: {resolvedOutput}");
-        Console.WriteLine($"  Preset: {preset}");
-        Console.WriteLine($"  Format: {format}");
-        Console.WriteLine($"  Codec:  {codec} ({codecLib})");
-        Console.WriteLine();
+        Services.Console.WriteLine($"Converting video...");
+        Services.Console.WriteLine($"  Input:  {resolvedInput}");
+        Services.Console.WriteLine($"  Output: {resolvedOutput}");
+        Services.Console.WriteLine($"  Preset: {preset}");
+        Services.Console.WriteLine($"  Format: {format}");
+        Services.Console.WriteLine($"  Codec:  {codec} ({codecLib})");
+        Services.Console.WriteLine();
 
         var exitCode = ExecuteFfmpeg(resolvedInput, resolvedOutput, presetSettings, format, codecLib, threads);
 
         if (exitCode == 0) {
-          Console.WriteLine();
-          Console.WriteLine("Video conversion completed successfully.");
+          Services.Console.WriteLine();
+          Services.Console.WriteLine("Video conversion completed successfully.");
         }
         else {
-          Console.WriteLine($"Error: ffmpeg exited with code {exitCode}");
+          Services.Console.WriteLine($"Error: ffmpeg exited with code {exitCode}");
         }
       }
       catch (Exception ex) {
-        Console.WriteLine($"Error: {ex.Message}");
+        Services.Console.WriteLine($"Error: {ex.Message}");
       }
     });
 
@@ -123,41 +123,22 @@ public static class ConvertVideoCommand {
 
     var arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}-c:a aac -b:a {settings.AudioBitrate} -c:s {subtitleCodec} \"{output}\"";
 
-    var processStartInfo = new ProcessStartInfo {
-      FileName = "ffmpeg",
-      Arguments = arguments,
-      RedirectStandardOutput = true,
-      RedirectStandardError = true,
-      UseShellExecute = false,
-      CreateNoWindow = true
-    };
+    Services.Console.WriteLine($"Running: ffmpeg {arguments}");
+    Services.Console.WriteLine();
 
-    Console.WriteLine($"Running: ffmpeg {arguments}");
-    Console.WriteLine();
+    var result = Services.ProcessRunner.Run("ffmpeg", arguments);
 
-    using var process = new Process();
-    process.StartInfo = processStartInfo;
+    // Output any stderr (ffmpeg writes progress to stderr)
+    if (!string.IsNullOrEmpty(result.StandardError)) {
+      Services.Console.WriteLine(result.StandardError.TrimEnd());
+    }
 
-    // Handle stderr output (ffmpeg writes progress to stderr)
-    process.ErrorDataReceived += (sender, e) => {
-      if (!string.IsNullOrEmpty(e.Data)) {
-        Console.WriteLine(e.Data);
-      }
-    };
+    // Output any stdout
+    if (!string.IsNullOrEmpty(result.StandardOutput)) {
+      Services.Console.WriteLine(result.StandardOutput.TrimEnd());
+    }
 
-    // Handle stdout output
-    process.OutputDataReceived += (sender, e) => {
-      if (!string.IsNullOrEmpty(e.Data)) {
-        Console.WriteLine(e.Data);
-      }
-    };
-
-    process.Start();
-    process.BeginOutputReadLine();
-    process.BeginErrorReadLine();
-    process.WaitForExit();
-
-    return process.ExitCode;
+    return result.ExitCode;
   }
 
   private static string ResolvePath(string path) {
@@ -166,11 +147,13 @@ public static class ConvertVideoCommand {
     }
 
     if (path.StartsWith("~")) {
-      var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-      path = Path.Combine(homeDir, path.Substring(1).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+      var homeDir = Services.Environment.UserProfilePath;
+      path = Services.FileSystem.Path.Combine(homeDir, path.Substring(1).TrimStart(
+          Services.FileSystem.Path.DirectorySeparatorChar,
+          Services.FileSystem.Path.AltDirectorySeparatorChar));
     }
 
-    return Path.GetFullPath(path);
+    return Services.FileSystem.Path.GetFullPath(path);
   }
 
   private record PresetSettings(int Height, int Crf, string AudioBitrate);
