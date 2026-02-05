@@ -1,4 +1,4 @@
-﻿using System.CommandLine;
+using System.CommandLine;
 using JoeBot.Commands;
 using JoeBot.Commands.Rename;
 
@@ -11,5 +11,6 @@ var root = new RootCommand
 root.AddCommand(GetCommand.Get());
 root.AddCommand(ExecuteCommand.Get());
 root.AddCommand(RenameCommand.Get());
+root.AddCommand(ConvertCommand.Get());
 
 return root.InvokeAsync(args).Result;
