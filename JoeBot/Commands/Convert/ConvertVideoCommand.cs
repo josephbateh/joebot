@@ -16,6 +16,19 @@ public static class ConvertVideoCommand {
     ["hevc"] = "libx265"
   };
 
+  private static readonly Dictionary<string, string> GpuCodecs = new() {
+    ["h264"] = "h264_videotoolbox",
+    ["hevc"] = "hevc_videotoolbox"
+  };
+
+  // Plex-style bitrates for GPU encoding (VideoToolbox)
+  private static readonly Dictionary<int, string> GpuBitrates = new() {
+    [480] = "1.5M",
+    [720] = "4M",
+    [1080] = "8M",
+    [2160] = "20M"
+  };
+
   private static readonly string[] ValidFormats = { "mkv", "mp4" };
 
   public static Command Get() {
@@ -47,6 +60,12 @@ public static class ConvertVideoCommand {
       DefaultValueFactory = _ => Services.Environment.ProcessorCount
     };
 
+    var gpuOption = new Option<bool>("--gpu") {
+      Description = "Use GPU encoding (VideoToolbox on macOS)",
+      Arity = ArgumentArity.ZeroOrOne,
+      DefaultValueFactory = _ => false
+    };
+
     var command = new Command("video", "Convert a video file using ffmpeg");
     command.Arguments.Add(inputArg);
     command.Arguments.Add(outputArg);
@@ -54,6 +73,7 @@ public static class ConvertVideoCommand {
     command.Options.Add(formatOption);
     command.Options.Add(codecOption);
     command.Options.Add(threadsOption);
+    command.Options.Add(gpuOption);
 
     command.SetAction(parseResult => {
       var input = parseResult.GetValue<string>("input")!;
@@ -62,6 +82,7 @@ public static class ConvertVideoCommand {
       var format = parseResult.GetValue<string>("--format")!;
       var codec = parseResult.GetValue<string>("--codec")!;
       var threads = parseResult.GetValue<int>("--threads");
+      var gpu = parseResult.GetValue<bool>("--gpu");
 
       try {
         var resolvedInput = ResolvePath(input);
@@ -82,7 +103,10 @@ public static class ConvertVideoCommand {
           return;
         }
 
-        if (!Codecs.TryGetValue(codec.ToLower(), out var codecLib)) {
+        var codecLib = gpu && GpuCodecs.TryGetValue(codec.ToLower(), out var gpuEncoder)
+          ? gpuEncoder
+          : (Codecs.TryGetValue(codec.ToLower(), out var cpuEncoder) ? cpuEncoder : null);
+        if (codecLib == null) {
           Services.Console.WriteLine($"Error: Invalid codec '{codec}'. Valid codecs are: {string.Join(", ", Codecs.Keys)}");
           return;
         }
@@ -95,7 +119,7 @@ public static class ConvertVideoCommand {
         Services.Console.WriteLine($"  Codec:  {codec} ({codecLib})");
         Services.Console.WriteLine();
 
-        var exitCode = ExecuteFfmpeg(resolvedInput, resolvedOutput, presetSettings, format, codecLib, threads);
+        var exitCode = ExecuteFfmpeg(resolvedInput, resolvedOutput, presetSettings, format, codecLib, threads, gpu);
 
         if (exitCode == 0) {
           Services.Console.WriteLine();
@@ -113,14 +137,18 @@ public static class ConvertVideoCommand {
     return command;
   }
 
-  private static int ExecuteFfmpeg(string input, string output, PresetSettings settings, string format, string codecLib, int threads) {
-    // Build ffmpeg arguments
-    // Base: ffmpeg -i input -c:v {codec} -preset slow -crf {crf} -c:a aac -b:a {audioBitrate} -c:s copy output
-    // With scaling for non-1080p presets: -vf scale=-2:{height}
-
+  private static int ExecuteFfmpeg(string input, string output, PresetSettings settings, string format, string codecLib, int threads, bool useGpu) {
     var scaleFilter = settings.Height == 1080 ? "" : $"-vf scale=-2:{settings.Height} ";
+    var videoAudioSubs = $"-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
 
-    var arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
+    string arguments;
+    if (useGpu) {
+      var videoBitrate = GpuBitrates.TryGetValue(settings.Height, out var br) ? br : "8M";
+      arguments = $"-y -i \"{input}\" -c:v {codecLib} -b:v {videoBitrate} {scaleFilter}{videoAudioSubs}";
+    }
+    else {
+      arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}{videoAudioSubs}";
+    }
 
     Services.Console.WriteLine($"Running: ffmpeg {arguments}");
     Services.Console.WriteLine();

@@ -159,4 +159,49 @@ public class ConvertVideoCommandTests : CommandTestBase {
     var (_, arguments, _) = ProcessRunner.Calls[0];
     arguments.Should().Contain("-threads 8");
   }
+
+  [Fact]
+  public void ConvertVideo_WithGpuFlag_UsesVideotoolbox() {
+    // Arrange
+    var inputPath = "/videos/input.mkv";
+    var outputPath = "/videos/output.mp4";
+
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddFile(inputPath, new MockFileData("video content"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    // Act - default preset 1080p, default codec h264
+    var result = RunCommand("convert", "video", inputPath, outputPath, "--gpu");
+
+    // Assert
+    result.Should().Be(0);
+
+    var (_, arguments, _) = ProcessRunner.Calls[0];
+    arguments.Should().Contain("-c:v h264_videotoolbox");
+    arguments.Should().Contain("-b:v 8M"); // Plex 1080p preset
+    arguments.Should().NotContain("-preset");
+    arguments.Should().NotContain("-crf");
+  }
+
+  [Fact]
+  public void ConvertVideo_WithGpuAndHevc_UsesHevcVideotoolbox() {
+    // Arrange
+    var inputPath = "/videos/input.mkv";
+    var outputPath = "/videos/output.mp4";
+
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddFile(inputPath, new MockFileData("video content"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    // Act
+    var result = RunCommand("convert", "video", inputPath, outputPath, "--gpu", "--codec", "hevc");
+
+    // Assert
+    result.Should().Be(0);
+
+    var (_, arguments, _) = ProcessRunner.Calls[0];
+    arguments.Should().Contain("-c:v hevc_videotoolbox");
+  }
 }
