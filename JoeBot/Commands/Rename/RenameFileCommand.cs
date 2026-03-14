@@ -19,35 +19,35 @@ public class RenameFileCommand {
       try {
         var resolvedPath = ResolvePath(directory);
 
-        if (!Directory.Exists(resolvedPath)) {
-          Console.WriteLine($"Error: Directory '{directory}' does not exist.");
+        if (!Services.FileSystem.Directory.Exists(resolvedPath)) {
+          Services.Console.WriteLine($"Error: Directory '{directory}' does not exist.");
           return;
         }
 
-        var files = Directory.GetFiles(resolvedPath);
+        var files = Services.FileSystem.Directory.GetFiles(resolvedPath);
         if (files.Length == 0) {
-          Console.WriteLine($"No files found in directory '{directory}'.");
+          Services.Console.WriteLine($"No files found in directory '{directory}'.");
           return;
         }
 
         foreach (var filePath in files) {
-          var file = new FileInfo(filePath);
-          var originalName = Path.GetFileNameWithoutExtension(file.Name);
+          var file = Services.FileSystem.FileInfo.New(filePath);
+          var originalName = Services.FileSystem.Path.GetFileNameWithoutExtension(file.Name);
           var extension = file.Extension;
           var date = file.CreationTime.Date;
           var hash = GenerateHash(originalName);
 
           var newName = $"{date:yyyy-MM-dd}-{hash}{extension}";
-          var newPath = Path.Combine(resolvedPath, newName);
+          var newPath = Services.FileSystem.Path.Combine(resolvedPath, newName);
 
           if (newPath != file.FullName) {
-            File.Move(file.FullName, newPath);
-            Console.WriteLine($"Renamed: {file.Name} -> {newName}");
+            Services.FileSystem.File.Move(file.FullName, newPath);
+            Services.Console.WriteLine($"Renamed: {file.Name} -> {newName}");
           }
         }
       }
       catch (Exception ex) {
-        Console.WriteLine($"Error: {ex.Message}");
+        Services.Console.WriteLine($"Error: {ex.Message}");
       }
     });
 
@@ -69,10 +69,12 @@ public class RenameFileCommand {
     }
 
     if (path.StartsWith("~")) {
-      var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-      path = Path.Combine(homeDir, path.Substring(1).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+      var homeDir = Services.Environment.UserProfilePath;
+      path = Services.FileSystem.Path.Combine(homeDir, path.Substring(1).TrimStart(
+          Services.FileSystem.Path.DirectorySeparatorChar,
+          Services.FileSystem.Path.AltDirectorySeparatorChar));
     }
 
-    return Path.GetFullPath(path);
+    return Services.FileSystem.Path.GetFullPath(path);
   }
 }
