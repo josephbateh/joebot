@@ -4,7 +4,12 @@ using JoeBot.Abstractions;
 namespace JoeBot.Adapters;
 
 public class RealProcessRunner : IProcessRunner {
-  public ProcessRunResult Run(string fileName, string arguments, string? workingDirectory = null) {
+  public ProcessRunResult Run(
+    string fileName,
+    string arguments,
+    string? workingDirectory = null,
+    Action<string>? onStdoutLine = null,
+    Action<string>? onStderrLine = null) {
     var processStartInfo = new ProcessStartInfo {
       FileName = fileName,
       Arguments = arguments,
@@ -27,12 +32,14 @@ public class RealProcessRunner : IProcessRunner {
     process.OutputDataReceived += (_, e) => {
       if (e.Data != null) {
         stdout.AppendLine(e.Data);
+        onStdoutLine?.Invoke(e.Data);
       }
     };
 
     process.ErrorDataReceived += (_, e) => {
       if (e.Data != null) {
         stderr.AppendLine(e.Data);
+        onStderrLine?.Invoke(e.Data);
       }
     };
 

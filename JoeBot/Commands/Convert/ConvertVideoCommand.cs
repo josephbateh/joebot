@@ -125,14 +125,12 @@ public static class ConvertVideoCommand {
     Services.Console.WriteLine($"Running: ffmpeg {arguments}");
     Services.Console.WriteLine();
 
-    var result = Services.ProcessRunner.Run("ffmpeg", arguments);
+    var result = Services.ProcessRunner.Run(
+      "ffmpeg",
+      arguments,
+      onStderrLine: line => Services.Console.WriteLine(line));
 
-    // Output any stderr (ffmpeg writes progress to stderr)
-    if (!string.IsNullOrEmpty(result.StandardError)) {
-      Services.Console.WriteLine(result.StandardError.TrimEnd());
-    }
-
-    // Output any stdout
+    // stderr was already streamed via onStderrLine; only print stdout if present
     if (!string.IsNullOrEmpty(result.StandardOutput)) {
       Services.Console.WriteLine(result.StandardOutput.TrimEnd());
     }

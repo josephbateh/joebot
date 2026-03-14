@@ -10,7 +10,12 @@ public class FakeProcessRunner : IProcessRunner {
     _results.Enqueue(new ProcessRunResult(exitCode, stdout, stderr));
   }
 
-  public ProcessRunResult Run(string fileName, string arguments, string? workingDirectory = null) {
+  public ProcessRunResult Run(
+    string fileName,
+    string arguments,
+    string? workingDirectory = null,
+    Action<string>? onStdoutLine = null,
+    Action<string>? onStderrLine = null) {
     Calls.Add((fileName, arguments, workingDirectory));
 
     if (_results.Count == 0) {
@@ -18,6 +23,20 @@ public class FakeProcessRunner : IProcessRunner {
           $"No result configured for process call. FileName: {fileName}, Arguments: {arguments}");
     }
 
-    return _results.Dequeue();
+    var result = _results.Dequeue();
+
+    if (onStdoutLine != null && !string.IsNullOrEmpty(result.StandardOutput)) {
+      foreach (var line in result.StandardOutput.Split(["\r\n", "\n"], StringSplitOptions.None)) {
+        onStdoutLine(line);
+      }
+    }
+
+    if (onStderrLine != null && !string.IsNullOrEmpty(result.StandardError)) {
+      foreach (var line in result.StandardError.Split(["\r\n", "\n"], StringSplitOptions.None)) {
+        onStderrLine(line);
+      }
+    }
+
+    return result;
   }
 }
