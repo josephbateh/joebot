@@ -119,9 +119,8 @@ public static class ConvertVideoCommand {
     // With scaling for non-1080p presets: -vf scale=-2:{height}
 
     var scaleFilter = settings.Height == 1080 ? "" : $"-vf scale=-2:{settings.Height} ";
-    var subtitleCodec = format.ToLower() == "mkv" ? "srt" : "mov_text";
 
-    var arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}-c:a aac -b:a {settings.AudioBitrate} -c:s {subtitleCodec} \"{output}\"";
+    var arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
 
     Services.Console.WriteLine($"Running: ffmpeg {arguments}");
     Services.Console.WriteLine();

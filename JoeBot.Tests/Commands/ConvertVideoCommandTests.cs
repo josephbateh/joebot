@@ -31,6 +31,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     arguments.Should().Contain(inputPath);
     arguments.Should().Contain(outputPath);
     arguments.Should().Contain("-c:v libx264"); // default codec
+    arguments.Should().Contain("-c:s copy"); // copy subtitles without re-encoding
 
     // Verify success message
     Console.Lines.Should().Contain("Video conversion completed successfully.");
