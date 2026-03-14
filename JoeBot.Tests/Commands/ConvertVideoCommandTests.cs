@@ -178,10 +178,37 @@ public class ConvertVideoCommandTests : CommandTestBase {
     result.Should().Be(0);
 
     var (_, arguments, _) = ProcessRunner.Calls[0];
+    arguments.Should().Contain("-hwaccel videotoolbox");
     arguments.Should().Contain("-c:v h264_videotoolbox");
     arguments.Should().Contain("-b:v 8M"); // Plex 1080p preset
+    arguments.Should().Contain("scale_vt");
+    arguments.Should().Contain("h=1080");
     arguments.Should().NotContain("-preset");
     arguments.Should().NotContain("-crf");
+  }
+
+  [Fact]
+  public void ConvertVideo_WithGpuAnd720pPreset_UsesScaleVt() {
+    // Arrange
+    var inputPath = "/videos/input.mkv";
+    var outputPath = "/videos/output.mp4";
+
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddFile(inputPath, new MockFileData("video content"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    // Act
+    var result = RunCommand("convert", "video", inputPath, outputPath, "--gpu", "--preset", "720p");
+
+    // Assert
+    result.Should().Be(0);
+
+    var (_, arguments, _) = ProcessRunner.Calls[0];
+    arguments.Should().Contain("-hwaccel videotoolbox");
+    arguments.Should().Contain("scale_vt");
+    arguments.Should().Contain("h=720");
+    arguments.Should().NotContain("scale=-2:720");
   }
 
   [Fact]

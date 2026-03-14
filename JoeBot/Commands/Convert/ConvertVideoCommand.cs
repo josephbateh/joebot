@@ -138,15 +138,16 @@ public static class ConvertVideoCommand {
   }
 
   private static int ExecuteFfmpeg(string input, string output, PresetSettings settings, string format, string codecLib, int threads, bool useGpu) {
-    var scaleFilter = settings.Height == 1080 ? "" : $"-vf scale=-2:{settings.Height} ";
     var videoAudioSubs = $"-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
 
     string arguments;
     if (useGpu) {
       var videoBitrate = GpuBitrates.TryGetValue(settings.Height, out var br) ? br : "8M";
-      arguments = $"-y -i \"{input}\" -c:v {codecLib} -b:v {videoBitrate} {scaleFilter}{videoAudioSubs}";
+      var scaleFilter = $"-vf scale_vt=w=iw*{settings.Height}/ih:h={settings.Height} ";
+      arguments = $"-y -hwaccel videotoolbox -hwaccel_output_format videotoolbox_vld -i \"{input}\" -c:v {codecLib} -b:v {videoBitrate} {scaleFilter}{videoAudioSubs}";
     }
     else {
+      var scaleFilter = $"-vf scale=-2:{settings.Height} ";
       arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}{videoAudioSubs}";
     }
 
