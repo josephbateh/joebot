@@ -231,4 +231,78 @@ public class ConvertVideoCommandTests : CommandTestBase {
     var (_, arguments, _) = ProcessRunner.Calls[0];
     arguments.Should().Contain("-c:v hevc_videotoolbox");
   }
+
+  [Fact]
+  public void ConvertVideo_WithBulk_TwoPairs_BothSucceed() {
+    // Arrange
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddDirectory("/lists");
+    FileSystem.AddFile("/videos/a.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/videos/b.mkv", new MockFileData("video b"));
+    FileSystem.AddFile("/lists/in.txt", new MockFileData("/videos/a.mkv\n/videos/b.mkv"));
+    FileSystem.AddFile("/lists/out.txt", new MockFileData("/videos/a.mp4\n/videos/b.mp4"));
+
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+
+    // Act
+    var result = RunCommand("convert", "video", "/lists/in.txt", "/lists/out.txt", "--bulk");
+
+    // Assert
+    result.Should().Be(0);
+    ProcessRunner.Calls.Should().HaveCount(2);
+    Console.Lines.Should().Contain("All 2 conversion(s) completed successfully.");
+  }
+
+  [Fact]
+  public void ConvertVideo_WithBulk_LineCountMismatch_OutputsErrorAndNoFfmpegCalls() {
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddDirectory("/lists");
+    FileSystem.AddFile("/videos/a.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/lists/in.txt", new MockFileData("/videos/a.mkv\n/videos/b.mkv"));
+    FileSystem.AddFile("/lists/out.txt", new MockFileData("/videos/a.mp4"));
+
+    var result = RunCommand("convert", "video", "/lists/in.txt", "/lists/out.txt", "--bulk");
+
+    result.Should().Be(0);
+    Console.Lines.Should().Contain(line =>
+      line.Contains("Error") && line.Contains("Input list has 2 paths but output list has 1"));
+    ProcessRunner.Calls.Should().BeEmpty();
+  }
+
+  [Fact]
+  public void ConvertVideo_WithBulk_MissingInputFileInList_OutputsErrorAndNoFfmpegCalls() {
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddDirectory("/lists");
+    FileSystem.AddFile("/videos/a.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/lists/in.txt", new MockFileData("/videos/a.mkv\n/videos/nonexistent.mkv"));
+    FileSystem.AddFile("/lists/out.txt", new MockFileData("/videos/a.mp4\n/videos/b.mp4"));
+
+    var result = RunCommand("convert", "video", "/lists/in.txt", "/lists/out.txt", "--bulk");
+
+    result.Should().Be(0);
+    Console.Lines.Should().Contain(line =>
+      line.Contains("Error") && line.Contains("does not exist"));
+    ProcessRunner.Calls.Should().BeEmpty();
+  }
+
+  [Fact]
+  public void ConvertVideo_WithBulk_OneFfmpegFails_ExitsWithCode1AndPrintsFailure() {
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddDirectory("/lists");
+    FileSystem.AddFile("/videos/a.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/videos/b.mkv", new MockFileData("video b"));
+    FileSystem.AddFile("/lists/in.txt", new MockFileData("/videos/a.mkv\n/videos/b.mkv"));
+    FileSystem.AddFile("/lists/out.txt", new MockFileData("/videos/a.mp4\n/videos/b.mp4"));
+
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(1, "", "ffmpeg error");
+
+    var result = RunCommand("convert", "video", "/lists/in.txt", "/lists/out.txt", "--bulk");
+
+    ProcessRunner.Calls.Should().HaveCount(2);
+    Console.Lines.Should().Contain(line =>
+      line.Contains("Failed") && line.Contains("/videos/b.mkv") && line.Contains("exit 1"));
+    Environment.ExitCode.Should().Be(1);
+  }
 }

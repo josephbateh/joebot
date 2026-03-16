@@ -66,6 +66,12 @@ public static class ConvertVideoCommand {
       DefaultValueFactory = _ => false
     };
 
+    var bulkOption = new Option<bool>("--bulk") {
+      Description = "Treat input and output as paths to text files containing one video path per line (one conversion per pair, in parallel)",
+      Arity = ArgumentArity.ZeroOrOne,
+      DefaultValueFactory = _ => false
+    };
+
     var command = new Command("video", "Convert a video file using ffmpeg");
     command.Arguments.Add(inputArg);
     command.Arguments.Add(outputArg);
@@ -74,6 +80,7 @@ public static class ConvertVideoCommand {
     command.Options.Add(codecOption);
     command.Options.Add(threadsOption);
     command.Options.Add(gpuOption);
+    command.Options.Add(bulkOption);
 
     command.SetAction(parseResult => {
       var input = parseResult.GetValue<string>("input")!;
@@ -83,16 +90,9 @@ public static class ConvertVideoCommand {
       var codec = parseResult.GetValue<string>("--codec")!;
       var threads = parseResult.GetValue<int>("--threads");
       var gpu = parseResult.GetValue<bool>("--gpu");
+      var bulk = parseResult.GetValue<bool>("--bulk");
 
       try {
-        var resolvedInput = ResolvePath(input);
-        var resolvedOutput = ResolvePath(output);
-
-        if (!Services.FileSystem.File.Exists(resolvedInput)) {
-          Services.Console.WriteLine($"Error: Input file '{input}' does not exist.");
-          return;
-        }
-
         if (!Presets.TryGetValue(preset, out var presetSettings)) {
           Services.Console.WriteLine($"Error: Invalid preset '{preset}'. Valid presets are: {string.Join(", ", Presets.Keys)}");
           return;
@@ -111,6 +111,19 @@ public static class ConvertVideoCommand {
           return;
         }
 
+        if (bulk) {
+          RunBulkMode(input, output, presetSettings, format, codecLib, threads, gpu);
+          return;
+        }
+
+        var resolvedInput = ResolvePath(input);
+        var resolvedOutput = ResolvePath(output);
+
+        if (!Services.FileSystem.File.Exists(resolvedInput)) {
+          Services.Console.WriteLine($"Error: Input file '{input}' does not exist.");
+          return;
+        }
+
         Services.Console.WriteLine($"Converting video...");
         Services.Console.WriteLine($"  Input:  {resolvedInput}");
         Services.Console.WriteLine($"  Output: {resolvedOutput}");
@@ -119,7 +132,7 @@ public static class ConvertVideoCommand {
         Services.Console.WriteLine($"  Codec:  {codec} ({codecLib})");
         Services.Console.WriteLine();
 
-        var exitCode = ExecuteFfmpeg(resolvedInput, resolvedOutput, presetSettings, format, codecLib, threads, gpu);
+        var exitCode = ExecuteFfmpeg(resolvedInput, resolvedOutput, presetSettings, format, codecLib, threads, gpu, null);
 
         if (exitCode == 0) {
           Services.Console.WriteLine();
@@ -137,7 +150,73 @@ public static class ConvertVideoCommand {
     return command;
   }
 
-  private static int ExecuteFfmpeg(string input, string output, PresetSettings settings, string format, string codecLib, int threads, bool useGpu) {
+  private static void RunBulkMode(string inputListPath, string outputListPath, PresetSettings presetSettings, string format, string codecLib, int threads, bool gpu) {
+    var resolvedListInput = ResolvePath(inputListPath);
+    var resolvedListOutput = ResolvePath(outputListPath);
+
+    if (!Services.FileSystem.File.Exists(resolvedListInput)) {
+      Services.Console.WriteLine($"Error: Input list file '{inputListPath}' does not exist.");
+      return;
+    }
+
+    if (!Services.FileSystem.File.Exists(resolvedListOutput)) {
+      Services.Console.WriteLine($"Error: Output list file '{outputListPath}' does not exist.");
+      return;
+    }
+
+    var inputPaths = ParseListFile(resolvedListInput);
+    var outputPaths = ParseListFile(resolvedListOutput);
+
+    if (inputPaths.Count != outputPaths.Count) {
+      Services.Console.WriteLine($"Error: Input list has {inputPaths.Count} paths but output list has {outputPaths.Count}. Counts must match.");
+      return;
+    }
+
+    for (var i = 0; i < inputPaths.Count; i++) {
+      if (!Services.FileSystem.File.Exists(inputPaths[i])) {
+        Services.Console.WriteLine($"Error: Input file '{inputPaths[i]}' (line {i + 1}) does not exist.");
+        return;
+      }
+    }
+
+    var pairs = inputPaths.Zip(outputPaths, (inp, outp) => (Input: inp, Output: outp)).ToList();
+    var consoleLock = new object();
+
+    var tasks = pairs.Select(pair =>
+      Task.Run(() => (
+        pair.Input,
+        pair.Output,
+        ExitCode: ExecuteFfmpeg(pair.Input, pair.Output, presetSettings, format, codecLib, threads, gpu, consoleLock)
+      ))).ToList();
+
+    var results = Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+    var anyFailed = false;
+    foreach (var (resInput, resOutput, exitCode) in results) {
+      if (exitCode != 0) {
+        anyFailed = true;
+        Services.Console.WriteLine($"Failed: {resInput} -> {resOutput} (exit {exitCode})");
+      }
+    }
+
+    if (anyFailed) {
+      Services.Environment.Exit(1);
+    }
+    else {
+      Services.Console.WriteLine($"All {results.Length} conversion(s) completed successfully.");
+    }
+  }
+
+  private static List<string> ParseListFile(string path) {
+    var lines = Services.FileSystem.File.ReadAllLines(path);
+    return lines
+      .Select(line => line.Trim())
+      .Where(line => !string.IsNullOrWhiteSpace(line))
+      .Select(ResolvePath)
+      .ToList();
+  }
+
+  private static int ExecuteFfmpeg(string input, string output, PresetSettings settings, string format, string codecLib, int threads, bool useGpu, object? consoleLock) {
     var videoAudioSubs = $"-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
 
     string arguments;
@@ -151,17 +230,27 @@ public static class ConvertVideoCommand {
       arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}{videoAudioSubs}";
     }
 
-    Services.Console.WriteLine($"Running: ffmpeg {arguments}");
-    Services.Console.WriteLine();
+    void WriteLine(string line) {
+      if (consoleLock != null) {
+        lock (consoleLock) {
+          Services.Console.WriteLine(line);
+        }
+      }
+      else {
+        Services.Console.WriteLine(line);
+      }
+    }
+
+    WriteLine($"Running: ffmpeg {arguments}");
+    WriteLine(string.Empty);
 
     var result = Services.ProcessRunner.Run(
       "ffmpeg",
       arguments,
-      onStderrLine: line => Services.Console.WriteLine(line));
+      onStderrLine: line => WriteLine(line));
 
-    // stderr was already streamed via onStderrLine; only print stdout if present
     if (!string.IsNullOrEmpty(result.StandardOutput)) {
-      Services.Console.WriteLine(result.StandardOutput.TrimEnd());
+      WriteLine(result.StandardOutput.TrimEnd());
     }
 
     return result.ExitCode;
