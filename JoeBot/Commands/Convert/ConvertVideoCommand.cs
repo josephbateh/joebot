@@ -31,13 +31,18 @@ public static class ConvertVideoCommand {
 
   private static readonly string[] ValidFormats = { "mkv", "mp4" };
 
+  private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase) {
+    ".mkv", ".mp4", ".avi", ".mov", ".m4v", ".ts", ".wmv"
+  };
+
   public static Command Get() {
     var inputArg = new Argument<string>("input") {
-      Description = "Path to the input video file"
+      Description = "Path to the input video file (or directory when using --directory)"
     };
 
-    var outputArg = new Argument<string>("output") {
-      Description = "Path to the output video file"
+    var outputArg = new Argument<string?>("output") {
+      Description = "Path to the output video file (not required when using --directory)",
+      Arity = ArgumentArity.ZeroOrOne
     };
 
     var presetOption = new Option<string>("--preset", "-p") {
@@ -72,6 +77,23 @@ public static class ConvertVideoCommand {
       DefaultValueFactory = _ => false
     };
 
+    var directoryOption = new Option<bool>("--directory") {
+      Description = "Treat input as a directory to scan recursively for video files to convert",
+      Arity = ArgumentArity.ZeroOrOne,
+      DefaultValueFactory = _ => false
+    };
+
+    var deleteOption = new Option<bool>("--delete") {
+      Description = "After all conversions succeed, delete originals and rename outputs to the original filenames",
+      Arity = ArgumentArity.ZeroOrOne,
+      DefaultValueFactory = _ => false
+    };
+
+    var jobsOption = new Option<int>("--jobs", "-j") {
+      Description = "Maximum number of parallel conversions when using --directory (default: 1)",
+      DefaultValueFactory = _ => 1
+    };
+
     var command = new Command("video", "Convert a video file using ffmpeg");
     command.Arguments.Add(inputArg);
     command.Arguments.Add(outputArg);
@@ -81,16 +103,22 @@ public static class ConvertVideoCommand {
     command.Options.Add(threadsOption);
     command.Options.Add(gpuOption);
     command.Options.Add(bulkOption);
+    command.Options.Add(directoryOption);
+    command.Options.Add(deleteOption);
+    command.Options.Add(jobsOption);
 
     command.SetAction(parseResult => {
       var input = parseResult.GetValue<string>("input")!;
-      var output = parseResult.GetValue<string>("output")!;
+      var output = parseResult.GetValue<string?>("output");
       var preset = parseResult.GetValue<string>("--preset")!;
       var format = parseResult.GetValue<string>("--format")!;
       var codec = parseResult.GetValue<string>("--codec")!;
       var threads = parseResult.GetValue<int>("--threads");
       var gpu = parseResult.GetValue<bool>("--gpu");
       var bulk = parseResult.GetValue<bool>("--bulk");
+      var directory = parseResult.GetValue<bool>("--directory");
+      var delete = parseResult.GetValue<bool>("--delete");
+      var jobs = parseResult.GetValue<int>("--jobs");
 
       try {
         if (!Presets.TryGetValue(preset, out var presetSettings)) {
@@ -111,8 +139,22 @@ public static class ConvertVideoCommand {
           return;
         }
 
+        if (directory) {
+          RunDirectoryMode(input, presetSettings, preset, format, codecLib, threads, gpu, jobs, delete);
+          return;
+        }
+
         if (bulk) {
+          if (output == null) {
+            Services.Console.WriteLine("Error: An output list path is required when using --bulk mode.");
+            return;
+          }
           RunBulkMode(input, output, presetSettings, format, codecLib, threads, gpu);
+          return;
+        }
+
+        if (output == null) {
+          Services.Console.WriteLine("Error: An output path is required when not using --directory mode.");
           return;
         }
 
@@ -204,6 +246,102 @@ public static class ConvertVideoCommand {
     }
     else {
       Services.Console.WriteLine($"All {results.Length} conversion(s) completed successfully.");
+    }
+  }
+
+  private static void RunDirectoryMode(string dirPath, PresetSettings presetSettings, string preset, string format, string codecLib, int threads, bool gpu, int jobs, bool delete) {
+    var resolvedDir = ResolvePath(dirPath);
+
+    if (!Services.FileSystem.Directory.Exists(resolvedDir)) {
+      Services.Console.WriteLine($"Error: Directory '{dirPath}' does not exist.");
+      return;
+    }
+
+    var pairs = ScanDirectory(resolvedDir, preset, format);
+
+    if (pairs.Count == 0) {
+      Services.Console.WriteLine($"No video files found in '{dirPath}'.");
+      return;
+    }
+
+    Services.Console.WriteLine($"Found {pairs.Count} video file(s):");
+    foreach (var (input, output) in pairs) {
+      Services.Console.WriteLine($"  {input} -> {output}");
+    }
+    Services.Console.WriteLine();
+
+    var consoleLock = new object();
+    using var semaphore = new SemaphoreSlim(jobs, jobs);
+
+    var tasks = pairs.Select(pair =>
+      Task.Run(() => {
+        semaphore.Wait();
+        try {
+          return (
+            pair.Input,
+            pair.Output,
+            ExitCode: ExecuteFfmpeg(pair.Input, pair.Output, presetSettings, format, codecLib, threads, gpu, consoleLock)
+          );
+        }
+        finally {
+          semaphore.Release();
+        }
+      })).ToList();
+
+    var results = Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+    var anyFailed = false;
+    var successfulPairs = new List<(string Input, string Output)>();
+
+    foreach (var (resInput, resOutput, exitCode) in results) {
+      if (exitCode != 0) {
+        anyFailed = true;
+        Services.Console.WriteLine($"Failed: {resInput} -> {resOutput} (exit {exitCode})");
+      }
+      else {
+        successfulPairs.Add((resInput, resOutput));
+      }
+    }
+
+    if (anyFailed) {
+      Services.Console.WriteLine($"{successfulPairs.Count} of {results.Length} conversion(s) completed successfully.");
+      Services.Environment.Exit(1);
+    }
+    else {
+      Services.Console.WriteLine($"All {results.Length} conversion(s) completed successfully.");
+      if (delete) {
+        RunDeleteRename(successfulPairs);
+      }
+    }
+  }
+
+  private static List<(string Input, string Output)> ScanDirectory(string dirPath, string preset, string format) {
+    var files = Services.FileSystem.Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories);
+
+    return files
+      .Where(f => VideoExtensions.Contains(Services.FileSystem.Path.GetExtension(f)))
+      .Where(f => !Presets.Keys.Any(p =>
+        Services.FileSystem.Path.GetFileNameWithoutExtension(f)
+          .EndsWith("." + p, StringComparison.OrdinalIgnoreCase)))
+      .Select(f => {
+        var dir = Services.FileSystem.Path.GetDirectoryName(f)!;
+        var baseName = Services.FileSystem.Path.GetFileNameWithoutExtension(f);
+        var output = Services.FileSystem.Path.Combine(dir, $"{baseName}.{preset}.{format}");
+        return (Input: f, Output: output);
+      })
+      .ToList();
+  }
+
+  private static void RunDeleteRename(IEnumerable<(string Input, string Output)> pairs) {
+    foreach (var (input, output) in pairs) {
+      try {
+        Services.FileSystem.File.Delete(input);
+        Services.FileSystem.File.Move(output, input);
+        Services.Console.WriteLine($"Replaced: {input}");
+      }
+      catch (Exception ex) {
+        Services.Console.WriteLine($"Error replacing '{input}': {ex.Message}");
+      }
     }
   }
 

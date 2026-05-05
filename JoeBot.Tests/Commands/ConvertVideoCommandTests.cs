@@ -305,4 +305,235 @@ public class ConvertVideoCommandTests : CommandTestBase {
       line.Contains("Failed") && line.Contains("/videos/b.mkv") && line.Contains("exit 1"));
     Environment.ExitCode.Should().Be(1);
   }
+
+  [Fact]
+  public void ConvertVideo_WithBulkAndNoOutput_PrintsError() {
+    FileSystem.AddFile("/lists/in.txt", new MockFileData("/videos/a.mkv"));
+
+    var result = RunCommand("convert", "video", "/lists/in.txt", "--bulk");
+
+    result.Should().Be(0);
+    Console.Lines.Should().Contain(line => line.Contains("output list path is required"));
+    ProcessRunner.Calls.Should().BeEmpty();
+  }
+
+  // --directory mode: CLI wiring
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_NoOutputArgRequired() {
+    FileSystem.AddDirectory("/movies");
+    FileSystem.AddFile("/movies/Movie.mkv", new MockFileData("video"));
+    ProcessRunner.SetupNextResult(0);
+
+    var result = RunCommand("convert", "video", "/movies", "--directory");
+
+    result.Should().Be(0);
+    Console.Lines.Should().NotContain(line => line.Contains("output path is required"));
+  }
+
+  [Fact]
+  public void ConvertVideo_WithoutDirectoryAndNoOutput_PrintsError() {
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddFile("/videos/input.mkv", new MockFileData("video"));
+
+    var result = RunCommand("convert", "video", "/videos/input.mkv");
+
+    result.Should().Be(0);
+    Console.Lines.Should().Contain(line => line.Contains("output path is required"));
+    ProcessRunner.Calls.Should().BeEmpty();
+  }
+
+  // --directory mode: ScanDirectory
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_ConvertsAllVideoFiles() {
+    FileSystem.AddDirectory("/movies/MovieA");
+    FileSystem.AddDirectory("/movies/MovieB");
+    FileSystem.AddFile("/movies/MovieA/MovieA.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/movies/MovieB/MovieB.mp4", new MockFileData("video b"));
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+
+    var result = RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv");
+
+    result.Should().Be(0);
+    ProcessRunner.Calls.Should().HaveCount(2);
+    Console.Lines.Should().Contain(line => line.Contains("All 2 conversion(s) completed successfully."));
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_OutputPathUsesPresetAndFormat() {
+    FileSystem.AddDirectory("/movies/Star Wars");
+    FileSystem.AddFile("/movies/Star Wars/Star Wars.mkv", new MockFileData("video"));
+    ProcessRunner.SetupNextResult(0);
+
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv");
+
+    var (_, arguments, _) = ProcessRunner.Calls[0];
+    arguments.Should().Contain("Star Wars.1080p.mkv");
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_ExcludesAlreadyConvertedOutputs() {
+    FileSystem.AddDirectory("/movies/Film");
+    FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original"));
+    FileSystem.AddFile("/movies/Film/Film.1080p.mkv", new MockFileData("already converted"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv");
+
+    // Only Film.mkv should be converted, not Film.1080p.mkv
+    ProcessRunner.Calls.Should().HaveCount(1);
+    var (_, arguments, _) = ProcessRunner.Calls[0];
+    arguments.Should().NotContain("Film.1080p.mkv\" -c:v");
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_ExcludesAnyKnownPresetSuffix() {
+    FileSystem.AddDirectory("/movies/Film");
+    FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original"));
+    FileSystem.AddFile("/movies/Film/Film.720p.mkv", new MockFileData("previous 720p output"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    // Scanning with 1080p preset — Film.720p.mkv should still be excluded
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv");
+
+    ProcessRunner.Calls.Should().HaveCount(1);
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_IncludesFileWithPresetInNameButNotSuffix() {
+    FileSystem.AddDirectory("/movies");
+    FileSystem.AddFile("/movies/Star Wars 1080p.mkv", new MockFileData("video"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv");
+
+    // "Star Wars 1080p.mkv" has no dot before "1080p" — should be included
+    ProcessRunner.Calls.Should().HaveCount(1);
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_ExcludesNonVideoFiles() {
+    FileSystem.AddDirectory("/movies/Film");
+    FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("video"));
+    FileSystem.AddFile("/movies/Film/Film.nfo", new MockFileData("metadata"));
+    FileSystem.AddFile("/movies/Film/poster.jpg", new MockFileData("image"));
+
+    ProcessRunner.SetupNextResult(0);
+
+    RunCommand("convert", "video", "/movies", "--directory");
+
+    ProcessRunner.Calls.Should().HaveCount(1);
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_ScansRecursively() {
+    FileSystem.AddDirectory("/movies/Series/Season 1");
+    FileSystem.AddFile("/movies/Series/Season 1/Episode 1.mkv", new MockFileData("ep1"));
+    FileSystem.AddFile("/movies/Series/Season 1/Episode 2.mkv", new MockFileData("ep2"));
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+
+    RunCommand("convert", "video", "/movies", "--directory");
+
+    ProcessRunner.Calls.Should().HaveCount(2);
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_EmptyDirectory_PrintsMessage() {
+    FileSystem.AddDirectory("/movies");
+
+    var result = RunCommand("convert", "video", "/movies", "--directory");
+
+    result.Should().Be(0);
+    Console.Lines.Should().Contain(line => line.Contains("No video files found"));
+    ProcessRunner.Calls.Should().BeEmpty();
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_NonExistentDirectory_PrintsError() {
+    var result = RunCommand("convert", "video", "/nonexistent", "--directory");
+
+    result.Should().Be(0);
+    Console.Lines.Should().Contain(line => line.Contains("Error") && line.Contains("does not exist"));
+    ProcessRunner.Calls.Should().BeEmpty();
+  }
+
+  // --directory mode: RunDirectoryMode failure handling
+
+  [Fact]
+  public void ConvertVideo_WithDirectory_OneFails_ExitsWithCode1() {
+    FileSystem.AddDirectory("/movies/A");
+    FileSystem.AddDirectory("/movies/B");
+    FileSystem.AddFile("/movies/A/A.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/movies/B/B.mkv", new MockFileData("video b"));
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(1, "", "encode error");
+
+    RunCommand("convert", "video", "/movies", "--directory");
+
+    Environment.ExitCode.Should().Be(1);
+    Console.Lines.Should().Contain(line => line.Contains("Failed") && line.Contains("exit 1"));
+  }
+
+  // --directory mode: --delete flag
+
+  [Fact]
+  public void ConvertVideo_WithDirectoryAndDelete_RenamesOutputToOriginal() {
+    FileSystem.AddDirectory("/movies/Film");
+    FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original content"));
+    ProcessRunner.SetupNextResult(0);
+
+    // Simulate ffmpeg creating the output file
+    FileSystem.AddFile("/movies/Film/Film.1080p.mkv", new MockFileData("converted content"));
+
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv", "--delete");
+
+    // Original should have been replaced by the converted output
+    FileSystem.File.Exists("/movies/Film/Film.mkv").Should().BeTrue();
+    FileSystem.File.ReadAllText("/movies/Film/Film.mkv").Should().Be("converted content");
+    FileSystem.File.Exists("/movies/Film/Film.1080p.mkv").Should().BeFalse();
+    Console.Lines.Should().Contain(line => line.Contains("Replaced:") && line.Contains("Film.mkv"));
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectoryAndDelete_FailedConversionOriginalNotDeleted() {
+    FileSystem.AddDirectory("/movies/A");
+    FileSystem.AddDirectory("/movies/B");
+    FileSystem.AddFile("/movies/A/A.mkv", new MockFileData("video a"));
+    FileSystem.AddFile("/movies/B/B.mkv", new MockFileData("video b"));
+
+    // A succeeds, B fails
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(1, "", "encode error");
+
+    // Simulate ffmpeg creating output only for A
+    FileSystem.AddFile("/movies/A/A.1080p.mkv", new MockFileData("converted a"));
+
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv", "--delete");
+
+    // RunDeleteRename is skipped entirely when any conversion fails, so both originals are untouched
+    FileSystem.File.Exists("/movies/B/B.mkv").Should().BeTrue();
+    Environment.ExitCode.Should().Be(1);
+  }
+
+  [Fact]
+  public void ConvertVideo_WithDirectoryNoDelete_KeepsBothFiles() {
+    FileSystem.AddDirectory("/movies/Film");
+    FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original"));
+    ProcessRunner.SetupNextResult(0);
+
+    // Simulate ffmpeg creating output
+    FileSystem.AddFile("/movies/Film/Film.1080p.mkv", new MockFileData("converted"));
+
+    RunCommand("convert", "video", "/movies", "--directory", "--preset", "1080p", "--format", "mkv");
+
+    // Without --delete both files exist
+    FileSystem.File.Exists("/movies/Film/Film.mkv").Should().BeTrue();
+    FileSystem.File.Exists("/movies/Film/Film.1080p.mkv").Should().BeTrue();
+  }
 }
