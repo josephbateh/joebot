@@ -156,7 +156,7 @@ joe convert video <input> <output> [options]
 
 Options:
 
-- `-p, --preset` - Quality preset: 480p, 720p, 1080p (default), 4K
+- `-p, --preset` - Quality preset: 480p, 720p, 1080p-low, 1080p (default), 4K
 - `-f, --format` - Container format: mkv, mp4 (default)
 - `-c, --codec` - Video codec: h264 (default), hevc
 
