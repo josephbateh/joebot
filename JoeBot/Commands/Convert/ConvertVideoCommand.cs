@@ -4,11 +4,14 @@ using JoeBot.Abstractions;
 namespace JoeBot.Commands.Convert;
 
 public static class ConvertVideoCommand {
+  private const string AudioBitrate = "192k";
+
   private static readonly Dictionary<string, PresetSettings> Presets = new() {
-    ["480p"] = new PresetSettings(480, 23, "128k"),
-    ["720p"] = new PresetSettings(720, 22, "128k"),
-    ["1080p"] = new PresetSettings(1080, 21, "160k"),
-    ["4K"] = new PresetSettings(2160, 18, "192k")
+    ["480p"] = new PresetSettings(480, 23, "1.5M"),
+    ["720p"] = new PresetSettings(720, 22, "4M"),
+    ["1080p-low"] = new PresetSettings(1080, 22, "4M"),
+    ["1080p"] = new PresetSettings(1080, 21, "8M"),
+    ["4K"] = new PresetSettings(2160, 18, "20M")
   };
 
   private static readonly Dictionary<string, string> Codecs = new() {
@@ -19,14 +22,6 @@ public static class ConvertVideoCommand {
   private static readonly Dictionary<string, string> GpuCodecs = new() {
     ["h264"] = "h264_videotoolbox",
     ["hevc"] = "hevc_videotoolbox"
-  };
-
-  // Plex-style bitrates for GPU encoding (VideoToolbox)
-  private static readonly Dictionary<int, string> GpuBitrates = new() {
-    [480] = "1.5M",
-    [720] = "4M",
-    [1080] = "8M",
-    [2160] = "20M"
   };
 
   private static readonly string[] ValidFormats = { "mkv", "mp4" };
@@ -46,7 +41,7 @@ public static class ConvertVideoCommand {
     };
 
     var presetOption = new Option<string>("--preset", "-p") {
-      Description = "Video quality preset (480p, 720p, 1080p, 4K)",
+      Description = "Video quality preset (480p, 720p, 1080p-low, 1080p, 4K)",
       DefaultValueFactory = _ => "1080p"
     };
 
@@ -355,19 +350,6 @@ public static class ConvertVideoCommand {
   }
 
   private static int ExecuteFfmpeg(string input, string output, PresetSettings settings, string format, string codecLib, int threads, bool useGpu, object? consoleLock) {
-    var videoAudioSubs = $"-c:a aac -b:a {settings.AudioBitrate} -c:s copy \"{output}\"";
-
-    string arguments;
-    if (useGpu) {
-      var videoBitrate = GpuBitrates.TryGetValue(settings.Height, out var br) ? br : "8M";
-      var scaleFilter = $"-vf scale_vt=w=iw*{settings.Height}/ih:h={settings.Height} ";
-      arguments = $"-y -hwaccel videotoolbox -hwaccel_output_format videotoolbox_vld -i \"{input}\" -c:v {codecLib} -b:v {videoBitrate} {scaleFilter}{videoAudioSubs}";
-    }
-    else {
-      var scaleFilter = $"-vf scale=-2:{settings.Height} ";
-      arguments = $"-y -i \"{input}\" -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter}{videoAudioSubs}";
-    }
-
     void WriteLine(string line) {
       if (consoleLock != null) {
         lock (consoleLock) {
@@ -379,19 +361,97 @@ public static class ConvertVideoCommand {
       }
     }
 
-    WriteLine($"Running: ffmpeg {arguments}");
-    WriteLine(string.Empty);
+    int RunFfmpeg(string arguments) {
+      WriteLine($"Running: ffmpeg {arguments}");
+      WriteLine(string.Empty);
 
-    var result = Services.ProcessRunner.Run(
-      "ffmpeg",
-      arguments,
-      onStderrLine: line => WriteLine(line));
+      var result = Services.ProcessRunner.Run(
+        "ffmpeg",
+        arguments,
+        onStderrLine: line => WriteLine(line));
 
-    if (!string.IsNullOrEmpty(result.StandardOutput)) {
-      WriteLine(result.StandardOutput.TrimEnd());
+      if (!string.IsNullOrEmpty(result.StandardOutput)) {
+        WriteLine(result.StandardOutput.TrimEnd());
+      }
+
+      return result.ExitCode;
     }
 
-    return result.ExitCode;
+    // Video and audio are encoded in separate ffmpeg processes and muxed together
+    // afterward. Encoding both in a single process can starve the audio encoder
+    // under sustained heavy video encoding on long files, silently truncating or
+    // dropping audio output with no error and a successful exit code.
+    var tempVideo = $"{output}.tmpvideo.mkv";
+    var tempAudio = $"{output}.tmpaudio.mkv";
+    var hasAudio = HasAudioStream(input);
+    var videoStageValid = false;
+    var succeeded = false;
+
+    try {
+      // If a previous attempt's video encode is still sitting here, reuse it
+      // rather than redoing the most expensive stage - it's only left behind
+      // when that attempt got past video but failed on audio/mux. This assumes
+      // a retry uses the same input and preset as the run that produced it.
+      if (Services.FileSystem.File.Exists(tempVideo)) {
+        WriteLine($"Reusing video encode from a previous attempt: {tempVideo}");
+        videoStageValid = true;
+      }
+      else {
+        string videoArguments;
+        if (useGpu) {
+          var videoBitrate = settings.GpuBitrate;
+          var scaleFilter = $"-vf scale_vt=w=iw*{settings.Height}/ih:h={settings.Height}";
+          videoArguments = $"-y -hwaccel videotoolbox -hwaccel_output_format videotoolbox_vld -i \"{input}\" -map 0:v -c:v {codecLib} -b:v {videoBitrate} {scaleFilter} \"{tempVideo}\"";
+        }
+        else {
+          var scaleFilter = $"-vf scale=-2:{settings.Height}";
+          videoArguments = $"-y -i \"{input}\" -map 0:v -c:v {codecLib} -preset slow -crf {settings.Crf} -threads {threads} {scaleFilter} \"{tempVideo}\"";
+        }
+
+        var videoExitCode = RunFfmpeg(videoArguments);
+        if (videoExitCode != 0) {
+          return videoExitCode;
+        }
+        videoStageValid = true;
+      }
+
+      if (hasAudio) {
+        var audioArguments = $"-y -i \"{input}\" -map 0:a -af \"aformat=channel_layouts=mono|stereo|5.1|7.1\" -c:a aac -b:a {AudioBitrate} \"{tempAudio}\"";
+        var audioExitCode = RunFfmpeg(audioArguments);
+        if (audioExitCode != 0) {
+          return audioExitCode;
+        }
+      }
+
+      var muxArguments = hasAudio
+        ? $"-y -i \"{tempVideo}\" -i \"{tempAudio}\" -i \"{input}\" -map 0:v -map 1:a -map 2:s? -c copy \"{output}\""
+        : $"-y -i \"{tempVideo}\" -i \"{input}\" -map 0:v -map 1:s? -c copy \"{output}\"";
+      var muxExitCode = RunFfmpeg(muxArguments);
+      succeeded = muxExitCode == 0;
+      return muxExitCode;
+    }
+    finally {
+      // tempVideo is deleted once its content has safely landed in the final
+      // muxed output, or if this attempt's own video stage failed (leaving a
+      // partial/invalid file that must not be mistaken for a reusable one next
+      // time). It's preserved only when video succeeded but a later stage
+      // didn't, so a retry can skip re-encoding it. tempAudio is cheap to redo,
+      // so it's always cleaned up.
+      if ((succeeded || !videoStageValid) && Services.FileSystem.File.Exists(tempVideo)) {
+        Services.FileSystem.File.Delete(tempVideo);
+      }
+      if (Services.FileSystem.File.Exists(tempAudio)) {
+        Services.FileSystem.File.Delete(tempAudio);
+      }
+    }
+  }
+
+  private static bool HasAudioStream(string input) {
+    var result = Services.ProcessRunner.Run(
+      "ffprobe",
+      $"-v error -select_streams a -show_entries stream=index -of csv=p=0 \"{input}\"");
+
+    return result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.StandardOutput);
   }
 
   private static string ResolvePath(string path) {
@@ -409,5 +469,5 @@ public static class ConvertVideoCommand {
     return Services.FileSystem.Path.GetFullPath(path);
   }
 
-  private record PresetSettings(int Height, int Crf, string AudioBitrate);
+  private record PresetSettings(int Height, int Crf, string GpuBitrate);
 }
