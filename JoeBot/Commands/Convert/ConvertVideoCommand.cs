@@ -5,6 +5,7 @@ namespace JoeBot.Commands.Convert;
 
 public static class ConvertVideoCommand {
   private const string AudioBitrate = "192k";
+  private const int StereoDownmixChannelThreshold = 2;
 
   private static readonly Dictionary<string, PresetSettings> Presets = new() {
     ["480p"] = new PresetSettings(480, 23, "1.5M"),
@@ -383,7 +384,8 @@ public static class ConvertVideoCommand {
     // dropping audio output with no error and a successful exit code.
     var tempVideo = $"{output}.tmpvideo.mkv";
     var tempAudio = $"{output}.tmpaudio.mkv";
-    var hasAudio = HasAudioStream(input);
+    var audioTracks = GetAudioTracks(input);
+    var hasAudio = audioTracks.Count > 0;
     var videoStageValid = false;
     var succeeded = false;
 
@@ -415,17 +417,70 @@ public static class ConvertVideoCommand {
         videoStageValid = true;
       }
 
+      // For each source audio track, produce its normal AAC track plus - when
+      // the source is multichannel (5.1/7.1) - an extra stereo downmix so
+      // stereo-only playback devices get a properly mixed track (blending
+      // center/LFE/surrounds into L/R) instead of relying on the player to
+      // downmix a multichannel track itself, which not all of them do well.
+      // The stereo track for the first source track becomes the default for
+      // playback; every other track (including the original multichannel
+      // ones) is kept but no longer default.
+      var outputTracks = new List<(bool IsDownmix, string Language)>();
+      var defaultTrackIndex = -1;
       if (hasAudio) {
-        var audioArguments = $"-y -i \"{input}\" -map 0:a -af \"aformat=channel_layouts=mono|stereo|5.1|7.1\" -c:a aac -b:a {AudioBitrate} \"{tempAudio}\"";
-        var audioExitCode = RunFfmpeg(audioArguments);
+        var audioArgs = new List<string> { $"-y -i \"{input}\"" };
+        for (var t = 0; t < audioTracks.Count; t++) {
+          var track = audioTracks[t];
+          var originalOutIndex = outputTracks.Count;
+          audioArgs.Add($"-map 0:{track.Index}");
+          audioArgs.Add($"-filter:a:{originalOutIndex} \"aformat=channel_layouts=mono|stereo|5.1|7.1\"");
+          audioArgs.Add($"-c:a:{originalOutIndex} aac -b:a:{originalOutIndex} {AudioBitrate}");
+          outputTracks.Add((false, track.Language));
+
+          if (track.Channels > StereoDownmixChannelThreshold) {
+            var downmixOutIndex = outputTracks.Count;
+            audioArgs.Add($"-map 0:{track.Index}");
+            audioArgs.Add($"-filter:a:{downmixOutIndex} \"aformat=channel_layouts=stereo\"");
+            audioArgs.Add($"-c:a:{downmixOutIndex} aac -b:a:{downmixOutIndex} {AudioBitrate}");
+            outputTracks.Add((true, track.Language));
+
+            if (t == 0) {
+              defaultTrackIndex = downmixOutIndex;
+            }
+          }
+          else if (t == 0) {
+            defaultTrackIndex = originalOutIndex; // already stereo/mono - no downmix needed
+          }
+        }
+        audioArgs.Add($"\"{tempAudio}\"");
+
+        var audioExitCode = RunFfmpeg(string.Join(' ', audioArgs));
         if (audioExitCode != 0) {
           return audioExitCode;
         }
       }
 
-      var muxArguments = hasAudio
-        ? $"-y -i \"{tempVideo}\" -i \"{tempAudio}\" -i \"{input}\" -map 0:v -map 1:a -map 2:s? -c copy \"{output}\""
-        : $"-y -i \"{tempVideo}\" -i \"{input}\" -map 0:v -map 1:s? -c copy \"{output}\"";
+      string muxArguments;
+      if (hasAudio) {
+        var muxArgs = new List<string> {
+          $"-y -i \"{tempVideo}\" -i \"{tempAudio}\" -i \"{input}\" -map 0:v -map 1:a -map 2:s? -c copy"
+        };
+        for (var i = 0; i < outputTracks.Count; i++) {
+          if (outputTracks[i].IsDownmix) {
+            muxArgs.Add($"-metadata:s:a:{i} title=\"Stereo\"");
+            if (!string.IsNullOrWhiteSpace(outputTracks[i].Language)) {
+              muxArgs.Add($"-metadata:s:a:{i} language={outputTracks[i].Language}");
+            }
+          }
+          muxArgs.Add(i == defaultTrackIndex ? $"-disposition:a:{i} default" : $"-disposition:a:{i} 0");
+        }
+        muxArgs.Add($"\"{output}\"");
+        muxArguments = string.Join(' ', muxArgs);
+      }
+      else {
+        muxArguments = $"-y -i \"{tempVideo}\" -i \"{input}\" -map 0:v -map 1:s? -c copy \"{output}\"";
+      }
+
       var muxExitCode = RunFfmpeg(muxArguments);
       succeeded = muxExitCode == 0;
       return muxExitCode;
@@ -446,12 +501,27 @@ public static class ConvertVideoCommand {
     }
   }
 
-  private static bool HasAudioStream(string input) {
+  private static List<(int Index, int Channels, string Language)> GetAudioTracks(string input) {
     var result = Services.ProcessRunner.Run(
       "ffprobe",
-      $"-v error -select_streams a -show_entries stream=index -of csv=p=0 \"{input}\"");
+      $"-v error -select_streams a -show_entries stream=index,channels:stream_tags=language -of csv=p=0 \"{input}\"");
 
-    return result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.StandardOutput);
+    if (result.ExitCode != 0) {
+      return [];
+    }
+
+    var tracks = new List<(int Index, int Channels, string Language)>();
+    foreach (var line in result.StandardOutput.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)) {
+      var parts = line.Split(',');
+      if (parts.Length < 2 || !int.TryParse(parts[0], out var index) || !int.TryParse(parts[1], out var channels)) {
+        continue;
+      }
+
+      var language = parts.Length > 2 ? parts[2] : "";
+      tracks.Add((index, channels, language));
+    }
+
+    return tracks;
   }
 
   private static string ResolvePath(string path) {

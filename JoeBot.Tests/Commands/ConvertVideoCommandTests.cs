@@ -15,7 +15,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
     // Setup: ffprobe (has audio), video encode, audio encode, mux
-    ProcessRunner.SetupNextResult(0, "0"); // ffprobe finds one audio stream
+    ProcessRunner.SetupNextResult(0, "1,6,eng"); // ffprobe finds one audio stream
     ProcessRunner.SetupNextResult(0, "", "frame=100 fps=30 time=00:00:10");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -37,13 +37,97 @@ public class ConvertVideoCommandTests : CommandTestBase {
     videoArguments.Should().Contain(inputPath);
     videoArguments.Should().Contain("-c:v libx264"); // default codec
 
+    // The source track is 6-channel (5.1), so a stereo downmix should be
+    // added automatically alongside the original-layout track.
+    var (_, audioArguments, _) = ProcessRunner.Calls[2];
+    audioArguments.Should().Contain("-filter:a:0 \"aformat=channel_layouts=mono|stereo|5.1|7.1\""); // original layout
+    audioArguments.Should().Contain("-filter:a:1 \"aformat=channel_layouts=stereo\""); // downmix
+
     var (_, muxArguments, _) = ProcessRunner.Calls[3];
     muxArguments.Should().Contain(outputPath);
     muxArguments.Should().Contain("-map 2:s?"); // copy subtitles from original without re-encoding
     muxArguments.Should().Contain("-c copy");
+    muxArguments.Should().Contain("-metadata:s:a:1 title=\"Stereo\"");
+    muxArguments.Should().Contain("-metadata:s:a:1 language=eng");
+    muxArguments.Should().Contain("-disposition:a:1 default"); // stereo downmix is the default track
+    muxArguments.Should().Contain("-disposition:a:0 0"); // original multichannel track is no longer default
 
     // Verify success message
     Console.Lines.Should().Contain("Video conversion completed successfully.");
+  }
+
+  [Fact]
+  public void ConvertVideo_WithAlreadyStereoSource_DoesNotAddRedundantDownmix() {
+    // Arrange
+    var inputPath = "/videos/input.mkv";
+    var outputPath = "/videos/output.mp4";
+
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddFile(inputPath, new MockFileData("video content"));
+
+    // Source track is already stereo (2 channels) - no downmix needed
+    ProcessRunner.SetupNextResult(0, "1,2,eng");
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+
+    // Act
+    var result = RunCommand("convert", "video", inputPath, outputPath);
+
+    // Assert
+    result.Should().Be(0);
+
+    var (_, audioArguments, _) = ProcessRunner.Calls[2];
+    audioArguments.Should().Contain("-filter:a:0 \"aformat=channel_layouts=mono|stereo|5.1|7.1\"");
+    audioArguments.Should().NotContain("-filter:a:1"); // no second (downmix) stream
+
+    var (_, muxArguments, _) = ProcessRunner.Calls[3];
+    muxArguments.Should().NotContain("title=\"Stereo\"");
+    muxArguments.Should().Contain("-disposition:a:0 default"); // already-stereo track stays default
+  }
+
+  [Fact]
+  public void ConvertVideo_WithTwoMultichannelTracks_AddsMatchingDownmixPerLanguage() {
+    // Arrange
+    var inputPath = "/videos/input.mkv";
+    var outputPath = "/videos/output.mp4";
+
+    FileSystem.AddDirectory("/videos");
+    FileSystem.AddFile(inputPath, new MockFileData("video content"));
+
+    // An English 7.1 track and a Turkish 5.1 track
+    ProcessRunner.SetupNextResult(0, "1,8,eng\n2,6,tur");
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+    ProcessRunner.SetupNextResult(0);
+
+    // Act
+    var result = RunCommand("convert", "video", inputPath, outputPath);
+
+    // Assert
+    result.Should().Be(0);
+
+    var (_, audioArguments, _) = ProcessRunner.Calls[2];
+    audioArguments.Should().Contain("-map 0:1");
+    audioArguments.Should().Contain("-map 0:2");
+    // Output order: eng original(0), eng downmix(1), tur original(2), tur downmix(3)
+    audioArguments.Should().Contain("-filter:a:0 \"aformat=channel_layouts=mono|stereo|5.1|7.1\"");
+    audioArguments.Should().Contain("-filter:a:1 \"aformat=channel_layouts=stereo\"");
+    audioArguments.Should().Contain("-filter:a:2 \"aformat=channel_layouts=mono|stereo|5.1|7.1\"");
+    audioArguments.Should().Contain("-filter:a:3 \"aformat=channel_layouts=stereo\"");
+
+    var (_, muxArguments, _) = ProcessRunner.Calls[3];
+    muxArguments.Should().Contain("-metadata:s:a:1 language=eng");
+    muxArguments.Should().Contain("-metadata:s:a:3 language=tur");
+    muxArguments.Should().NotContain("-metadata:s:a:0 "); // original tracks are untouched
+    muxArguments.Should().NotContain("-metadata:s:a:2 ");
+
+    // Only the first track's stereo downmix (index 1) is default; everything
+    // else, including the second language's downmix, is not.
+    muxArguments.Should().Contain("-disposition:a:1 default");
+    muxArguments.Should().Contain("-disposition:a:0 0");
+    muxArguments.Should().Contain("-disposition:a:2 0");
+    muxArguments.Should().Contain("-disposition:a:3 0");
   }
 
   [Fact]
@@ -76,7 +160,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
     // ffprobe succeeds (has audio), then the video stage fails
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(1, "", "Error: codec not found");
 
     // Act
@@ -128,7 +212,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
     // First attempt: ffprobe succeeds, video succeeds, audio fails
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(1, "", "audio encode error");
 
@@ -145,7 +229,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
 
     // Second attempt: ffprobe succeeds, audio now succeeds, mux succeeds -
     // video stage should be skipped entirely since tempVideo already exists
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
 
@@ -172,7 +256,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/videos");
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -216,7 +300,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/videos");
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -240,7 +324,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/videos");
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -264,7 +348,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/videos");
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -294,7 +378,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/videos");
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -321,7 +405,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/videos");
     FileSystem.AddFile(inputPath, new MockFileData("video content"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -350,7 +434,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     // both pairs can interleave in any order. Results are keyed by which
     // executable is being run rather than relying on FIFO queue position, so
     // the outcome doesn't depend on interleaving.
-    ProcessRunner.SetupResultFor((fileName, _) => fileName == "ffprobe", 0, "0");
+    ProcessRunner.SetupResultFor((fileName, _) => fileName == "ffprobe", 0, "1,6,eng");
     ProcessRunner.SetupResultFor((fileName, _) => fileName == "ffmpeg", 0);
 
     // Act
@@ -409,7 +493,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     // b's video-stage call always fails, everything else always succeeds,
     // regardless of interleaving.
     ProcessRunner.SetupResultFor((fileName, args) => fileName == "ffmpeg" && args.Contains("/videos/b.mkv") && args.Contains("tmpvideo"), 1, "", "ffmpeg error");
-    ProcessRunner.SetupResultFor((fileName, _) => fileName == "ffprobe", 0, "0");
+    ProcessRunner.SetupResultFor((fileName, _) => fileName == "ffprobe", 0, "1,6,eng");
     ProcessRunner.SetupResultFor((fileName, _) => fileName == "ffmpeg", 0);
 
     var result = RunCommand("convert", "video", "/lists/in.txt", "/lists/out.txt", "--bulk");
@@ -437,7 +521,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
   public void ConvertVideo_WithDirectory_NoOutputArgRequired() {
     FileSystem.AddDirectory("/movies");
     FileSystem.AddFile("/movies/Movie.mkv", new MockFileData("video"));
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -468,11 +552,11 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/movies/MovieB");
     FileSystem.AddFile("/movies/MovieA/MovieA.mkv", new MockFileData("video a"));
     FileSystem.AddFile("/movies/MovieB/MovieB.mp4", new MockFileData("video b"));
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -488,7 +572,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
   public void ConvertVideo_WithDirectory_OutputPathUsesPresetAndFormat() {
     FileSystem.AddDirectory("/movies/Star Wars");
     FileSystem.AddFile("/movies/Star Wars/Star Wars.mkv", new MockFileData("video"));
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -505,7 +589,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original"));
     FileSystem.AddFile("/movies/Film/Film.1080p.mkv", new MockFileData("already converted"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -525,7 +609,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original"));
     FileSystem.AddFile("/movies/Film/Film.720p.mkv", new MockFileData("previous 720p output"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -541,7 +625,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/movies");
     FileSystem.AddFile("/movies/Star Wars 1080p.mkv", new MockFileData("video"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -559,7 +643,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile("/movies/Film/Film.nfo", new MockFileData("metadata"));
     FileSystem.AddFile("/movies/Film/poster.jpg", new MockFileData("image"));
 
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -574,11 +658,11 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddDirectory("/movies/Series/Season 1");
     FileSystem.AddFile("/movies/Series/Season 1/Episode 1.mkv", new MockFileData("ep1"));
     FileSystem.AddFile("/movies/Series/Season 1/Episode 2.mkv", new MockFileData("ep2"));
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -617,12 +701,12 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile("/movies/A/A.mkv", new MockFileData("video a"));
     FileSystem.AddFile("/movies/B/B.mkv", new MockFileData("video b"));
     // A's ffprobe, video, audio, and mux stages all succeed
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     // B's ffprobe succeeds but its video stage fails, short-circuiting before audio/mux
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(1, "", "encode error");
 
     RunCommand("convert", "video", "/movies", "--directory");
@@ -637,7 +721,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
   public void ConvertVideo_WithDirectoryAndDelete_RenamesOutputToOriginal() {
     FileSystem.AddDirectory("/movies/Film");
     FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original content"));
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
@@ -662,11 +746,11 @@ public class ConvertVideoCommandTests : CommandTestBase {
     FileSystem.AddFile("/movies/B/B.mkv", new MockFileData("video b"));
 
     // A succeeds (ffprobe, video, audio, mux), B's ffprobe succeeds but video stage fails
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(1, "", "encode error");
 
     // Simulate ffmpeg creating output only for A
@@ -683,7 +767,7 @@ public class ConvertVideoCommandTests : CommandTestBase {
   public void ConvertVideo_WithDirectoryNoDelete_KeepsBothFiles() {
     FileSystem.AddDirectory("/movies/Film");
     FileSystem.AddFile("/movies/Film/Film.mkv", new MockFileData("original"));
-    ProcessRunner.SetupNextResult(0, "0");
+    ProcessRunner.SetupNextResult(0, "1,6,eng");
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
     ProcessRunner.SetupNextResult(0);
