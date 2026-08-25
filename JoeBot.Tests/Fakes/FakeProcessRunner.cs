@@ -3,9 +3,18 @@ using JoeBot.Abstractions;
 namespace JoeBot.Tests.Fakes;
 
 public class FakeProcessRunner : IProcessRunner {
+  private readonly object _lock = new();
   private readonly Queue<ProcessRunResult> _results = new();
   private readonly List<(Func<string, string, bool> Match, ProcessRunResult Result)> _keyedResults = [];
-  public List<(string FileName, string Arguments, string? WorkingDirectory)> Calls { get; } = [];
+  private readonly List<(string FileName, string Arguments, string? WorkingDirectory)> _calls = [];
+
+  // Bulk/directory mode runs conversions concurrently via Task.Run with no
+  // synchronization, so this can be read and written from multiple threads at
+  // once. Snapshot it under the lock rather than exposing the backing list
+  // directly, since List<T> isn't thread-safe for concurrent Add + enumerate.
+  public List<(string FileName, string Arguments, string? WorkingDirectory)> Calls {
+    get { lock (_lock) { return [.. _calls]; } }
+  }
 
   public void SetupNextResult(int exitCode, string stdout = "", string stderr = "") {
     _results.Enqueue(new ProcessRunResult(exitCode, stdout, stderr));
@@ -24,20 +33,22 @@ public class FakeProcessRunner : IProcessRunner {
     string? workingDirectory = null,
     Action<string>? onStdoutLine = null,
     Action<string>? onStderrLine = null) {
-    Calls.Add((fileName, arguments, workingDirectory));
-
-    var keyedMatch = _keyedResults.FirstOrDefault(k => k.Match(fileName, arguments));
     ProcessRunResult result;
-    if (keyedMatch.Match != null) {
-      result = keyedMatch.Result;
-    }
-    else {
-      if (_results.Count == 0) {
-        throw new InvalidOperationException(
-            $"No result configured for process call. FileName: {fileName}, Arguments: {arguments}");
-      }
+    lock (_lock) {
+      _calls.Add((fileName, arguments, workingDirectory));
 
-      result = _results.Dequeue();
+      var keyedMatch = _keyedResults.FirstOrDefault(k => k.Match(fileName, arguments));
+      if (keyedMatch.Match != null) {
+        result = keyedMatch.Result;
+      }
+      else {
+        if (_results.Count == 0) {
+          throw new InvalidOperationException(
+              $"No result configured for process call. FileName: {fileName}, Arguments: {arguments}");
+        }
+
+        result = _results.Dequeue();
+      }
     }
 
     if (onStdoutLine != null && !string.IsNullOrEmpty(result.StandardOutput)) {

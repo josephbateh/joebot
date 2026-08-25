@@ -398,6 +398,19 @@ public static class ConvertVideoCommand {
         WriteLine($"Reusing video encode from a previous attempt: {tempVideo}");
         videoStageValid = true;
       }
+      else if (IsAlreadyAtOrBelowTarget(input, settings)) {
+        // Input is already at or below this preset's target resolution and
+        // bitrate (e.g. re-running against a file this same command already
+        // produced, to pick up a new feature). Re-encoding it again would
+        // cost time for no quality benefit and would actually lose quality
+        // to a second generation of lossy compression, so just copy it.
+        WriteLine("Input is already at or below the target resolution/bitrate for this preset - copying video without re-encoding.");
+        var copyExitCode = RunFfmpeg($"-y -i \"{input}\" -map 0:v -c:v copy \"{tempVideo}\"");
+        if (copyExitCode != 0) {
+          return copyExitCode;
+        }
+        videoStageValid = true;
+      }
       else {
         string videoArguments;
         if (useGpu) {
@@ -499,6 +512,57 @@ public static class ConvertVideoCommand {
         Services.FileSystem.File.Delete(tempAudio);
       }
     }
+  }
+
+  // Allows a real encoding variance margin above the nominal target bitrate
+  // before deciding a re-encode is actually needed - GPU bitrate targets are
+  // an average, not a hard cap, so a file this same preset already produced
+  // can legitimately land a bit above its nominal target.
+  private const double BitrateToleranceFactor = 1.15;
+
+  private static bool IsAlreadyAtOrBelowTarget(string input, PresetSettings settings) {
+    var currentHeight = GetVideoHeight(input);
+    var currentBitRate = GetOverallBitRate(input);
+    var targetBitRate = ParseBitrateToBps(settings.GpuBitrate);
+
+    return currentHeight.HasValue && currentHeight.Value <= settings.Height
+      && currentBitRate.HasValue && targetBitRate.HasValue
+      && currentBitRate.Value <= targetBitRate.Value * BitrateToleranceFactor;
+  }
+
+  private static int? GetVideoHeight(string input) {
+    var result = Services.ProcessRunner.Run(
+      "ffprobe",
+      $"-v error -select_streams v:0 -show_entries stream=height -of csv=p=0 \"{input}\"");
+
+    return result.ExitCode == 0 && int.TryParse(result.StandardOutput.Trim(), out var height) ? height : null;
+  }
+
+  private static long? GetOverallBitRate(string input) {
+    var result = Services.ProcessRunner.Run(
+      "ffprobe",
+      $"-v error -show_entries format=bit_rate -of csv=p=0 \"{input}\"");
+
+    return result.ExitCode == 0 && long.TryParse(result.StandardOutput.Trim(), out var bitRate) ? bitRate : null;
+  }
+
+  private static long? ParseBitrateToBps(string bitrate) {
+    if (string.IsNullOrWhiteSpace(bitrate)) {
+      return null;
+    }
+
+    var multiplier = 1d;
+    var numberPart = bitrate;
+    if (bitrate.EndsWith("M", StringComparison.OrdinalIgnoreCase)) {
+      multiplier = 1_000_000d;
+      numberPart = bitrate[..^1];
+    }
+    else if (bitrate.EndsWith("K", StringComparison.OrdinalIgnoreCase)) {
+      multiplier = 1_000d;
+      numberPart = bitrate[..^1];
+    }
+
+    return double.TryParse(numberPart, out var value) ? (long)(value * multiplier) : null;
   }
 
   private static List<(int Index, int Channels, string Language)> GetAudioTracks(string input) {
