@@ -36,19 +36,21 @@ public static class GetPodcastCommand {
       if (limit < 0) throw new ArgumentException("Limit must be non-negative", nameof(limit));
 
       // Create directory if it doesn't exist
-      Services.FileSystem.Directory.CreateDirectory(path);
+      Directory.CreateDirectory(path);
 
       var unlimitedDownloads = limit == 0;
 
+      // Use static HttpClient to follow best practices
+      using var client = new HttpClient();
       RssFeed deserialized;
 
       try {
-        using var content = await Services.HttpClient.GetStreamAsync(feed, cancellationToken).ConfigureAwait(false);
+        using var content = await client.GetStreamAsync(feed, cancellationToken).ConfigureAwait(false);
         var serializer = new XmlSerializer(typeof(RssFeed));
         deserialized = (RssFeed)serializer.Deserialize(content)!;
       }
       catch (Exception ex) {
-        Services.Console.WriteLine($"Failed to fetch or parse feed: {ex.Message}");
+        Console.WriteLine($"Failed to fetch or parse feed: {ex.Message}");
         return;
       }
 
@@ -65,22 +67,29 @@ public static class GetPodcastCommand {
         var url = item.Enclosure.Url;
 
         try {
-          using var data = await Services.HttpClient.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
+          using var data = await client.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
           var date = DateTime.Parse(item.PubDate);
           var formDate = date.ToUniversalTime().ToString("yyyy-MM-dd");
-          var fullPath = Services.FileSystem.Path.Combine(path, $"{formDate}-{hash}.mp3");
+          var fullPath = Path.Combine(path, $"{formDate}-{hash}.mp3");
 
-          if (Services.FileSystem.File.Exists(fullPath)) {
-            Services.Console.WriteLine($"Skipping: {fullPath}");
+          try {
+            // Check if file already exists.
+            await using Stream inStream = File.OpenRead(fullPath);
+            Console.WriteLine($"Skipping: {fullPath}");
           }
-          else {
-            await using var outStream = Services.FileSystem.File.OpenWrite(fullPath);
+          catch (FileNotFoundException) {
+            // File does not exist, download it.
+            await using Stream outStream = File.OpenWrite(fullPath);
             await data.CopyToAsync(outStream, cancellationToken);
-            Services.Console.WriteLine($"Downloaded: {fullPath}");
+            Console.WriteLine($"Downloaded: {fullPath}");
+          }
+          catch (IOException) {
+            // This can happen when another process is using the file. Example: iCloud Drive syncing a file.
+            Console.WriteLine($"Skipping: {fullPath}. Another process is using the file.");
           }
         }
         catch (Exception) {
-          Services.Console.WriteLine($"Failed on {url}");
+          Console.WriteLine($"Failed on {url}");
           continue;
         }
       }

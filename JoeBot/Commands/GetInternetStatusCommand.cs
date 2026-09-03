@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Net.NetworkInformation;
 
 namespace JoeBot.Commands;
 
@@ -29,31 +30,44 @@ public static class GetInternetStatusCommand {
         var secondaryHost = "wikipedia.org";
         var timeout = 1000;
 
-        var primaryStatus = Services.NetworkPing.CanReach(primaryHost, timeout);
-        var secondaryStatus = Services.NetworkPing.CanReach(secondaryHost, timeout);
+        var primaryStatus = CanReach(primaryHost, timeout);
+        var secondaryStatus = CanReach(secondaryHost, timeout);
 
         if (!primaryStatus && !secondaryStatus) {
-          if (log) Services.Console.WriteLine("Internet connection failure.");
+          if (log) Console.WriteLine("Internet connection failure.");
           // Both pings failed.
-          Services.Environment.Exit(1);
+          Environment.Exit(1);
           return;
         }
 
         if (primaryStatus && secondaryStatus) {
-          if (log) Services.Console.WriteLine("Internet connected.");
+          if (log) Console.WriteLine("Internet connected.");
         }
         else {
           // One of the hosts is reachable but not both
           var reachableHost = primaryStatus ? primaryHost : secondaryHost;
-          if (log) Services.Console.WriteLine($"Partial connectivity. Only {reachableHost} is reachable.");
+          if (log) Console.WriteLine($"Partial connectivity. Only {reachableHost} is reachable.");
         }
       }
       catch (Exception) {
         // Something weird happened.
-        if (log) Services.Console.WriteLine("Unknown failure.");
-        Services.Environment.Exit(2);
+        if (log) Console.WriteLine("Unknown failure.");
+        Environment.Exit(2);
       }
     });
     return command;
+  }
+
+  private static bool CanReach(string host, int timeoutMs) {
+    try {
+      using var ping = new Ping();
+      var buffer = new byte[32];
+      var options = new PingOptions();
+      var reply = ping.Send(host, timeoutMs, buffer, options);
+      return reply.Status == IPStatus.Success;
+    }
+    catch {
+      return false;
+    }
   }
 }
